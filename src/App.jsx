@@ -664,7 +664,6 @@ function MarketCard({ market, onClick }) {
           {market.source}
         </div>
       </div>
-      <ProbabilityRoots value={market.probability} />
     </button>
   );
 }
