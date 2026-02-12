@@ -287,10 +287,10 @@ async function generateForecast(question, marketContext, memory, statusCb) {
 
   let confidence = 3;
   let responseText = synthResult;
-  const confMatch = synthResult.match(/CONFIDENCE:(\d)/);
+  const confMatch = synthResult.match(/CONFIDENCE[:\s*]+([1-5])/i);
   if (confMatch) {
     confidence = parseInt(confMatch[1], 10);
-    responseText = synthResult.replace(/\n?CONFIDENCE:\d/, "").trim();
+    responseText = synthResult.replace(/\n?\*{0,2}CONFIDENCE[:\s*]+[1-5]\*{0,2}/gi, "").trim();
   }
 
   return {
