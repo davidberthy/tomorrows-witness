@@ -155,7 +155,7 @@ async function saveHistory(history) {
 async function fetchPolymarketData() {
   try {
     const resp = await fetch(
-      "https://gamma-api.polymarket.com/events?limit=12&active=true&closed=false&order=volume24hr&ascending=false"
+      "/api/markets/polymarket"
     );
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -186,7 +186,7 @@ async function fetchPolymarketData() {
 async function fetchMetaculusData() {
   try {
     const resp = await fetch(
-      "https://www.metaculus.com/api2/questions/?limit=8&order_by=-activity&status=open&type=forecast&forecast_type=binary"
+      "/api/markets/metaculus"
     );
     if (!resp.ok) return [];
     const data = await resp.json();
