@@ -974,15 +974,15 @@ export default function TomorrowsWitness() {
         :root {
           --bg: #1a1410;
           --bg-warm: #211a14;
-          --card-bg: rgba(35, 27, 20, 0.85);
+          --card-bg: rgba(40, 30, 22, 0.9);
           --border: rgba(180, 150, 100, 0.1);
-          --amber: #c4993c;
-          --amber-dim: rgba(196, 153, 60, 0.55);
-          --terracotta: #b06840;
-          --glow: #7ab07a;
-          --text: rgba(230, 215, 190, 0.88);
-          --text-dim: rgba(200, 185, 160, 0.7);
-          --text-faint: rgba(180, 160, 130, 0.35);
+          --amber: #d4a84a;
+          --amber-dim: rgba(212, 168, 74, 0.7);
+          --terracotta: #c47a50;
+          --glow: #8cc48c;
+          --text: rgba(245, 235, 215, 0.95);
+          --text-dim: rgba(225, 210, 185, 0.8);
+          --text-faint: rgba(190, 170, 140, 0.45);
           --serif: 'Cormorant Garamond', Georgia, serif;
           --mono: 'DM Mono', monospace;
           --safe-bottom: env(safe-area-inset-bottom, 0px);
