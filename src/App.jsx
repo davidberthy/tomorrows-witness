@@ -924,7 +924,7 @@ export default function TomorrowsWitness() {
 
   const handleMarketClick = (market) => {
     const prompt = `The prediction markets are currently asking: "${market.title}" ${
-      market.probability != null ? `(${market.probability}% probability)` : ""
+      ""
     }. What actually happened?`;
     sendMessage(prompt);
   };
