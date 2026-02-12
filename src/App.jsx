@@ -883,6 +883,9 @@ export default function TomorrowsWitness() {
     setInput("");
     setShowIntro(false);
     setView("chat");
+
+    // Log question (fire and forget)
+    fetch("/api/log-question", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text.trim() }) }).catch(() => {});
     setIsLoading(true);
     setLoadingStatus("Establishing temporal link...");
 

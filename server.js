@@ -1,4 +1,5 @@
 import express from 'express';
+import pg from 'pg';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -9,6 +10,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '1mb' }));
+
+// ==========================================
+// DATABASE — question logging
+// ==========================================
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS questions (
+    id SERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`).then(() => console.log('Questions table ready'))
+  .catch(err => console.error('DB init error:', err));
+
 
 // Serve static files from the built app
 app.use(express.static(join(__dirname, 'dist')));
@@ -228,6 +247,48 @@ app.get('/api/markets/metaculus', async (req, res) => {
 });
 
 // SPA fallback — serve index.html for all other routes
+
+// Log a question
+app.post('/api/log-question', async (req, res) => {
+  const { question } = req.body;
+  if (!question) return res.status(400).json({ error: 'No question' });
+  try {
+    await pool.query('INSERT INTO questions (question) VALUES ($1)', [question]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Log error:', err);
+    res.json({ ok: false });
+  }
+});
+
+// Admin view — simple page showing all questions
+app.get('/admin/questions', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT question, created_at FROM questions ORDER BY created_at DESC LIMIT 200'
+    );
+    const rows = result.rows;
+    const html = `<!DOCTYPE html>
+<html><head><title>Tomorrow's Witness — Questions Log</title>
+<style>
+  body { background: #1a1410; color: #e6d7be; font-family: 'Courier New', monospace; padding: 40px; max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 18px; color: #d4a84a; letter-spacing: 0.1em; text-transform: uppercase; }
+  .count { font-size: 13px; color: rgba(230,215,190,0.5); margin-bottom: 30px; }
+  .q { border-bottom: 1px solid rgba(180,150,100,0.15); padding: 12px 0; }
+  .q-text { font-size: 15px; line-height: 1.5; }
+  .q-time { font-size: 11px; color: rgba(230,215,190,0.4); margin-top: 4px; }
+</style></head><body>
+<h1>Questions Log</h1>
+<div class="count">${rows.length} questions recorded</div>
+${rows.map(r => '<div class="q"><div class="q-text">' + r.question.replace(/</g, '&lt;') + '</div><div class="q-time">' + new Date(r.created_at).toLocaleString() + '</div></div>').join('')}
+</body></html>`;
+    res.send(html);
+  } catch (err) {
+    console.error('Admin error:', err);
+    res.status(500).send('Database error');
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
