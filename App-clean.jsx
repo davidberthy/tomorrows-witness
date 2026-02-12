@@ -149,63 +149,22 @@ async function saveHistory(history) {
 }
 
 // ==========================================
-// PREDICTION MARKET FETCHING
+// PREDICTION MARKET FETCHING — curated by AI
 // ==========================================
 
-async function fetchPolymarketData() {
+async function fetchCuratedMarkets() {
   try {
-    const resp = await fetch(
-      "/api/markets/polymarket"
-    );
+    const resp = await fetch("/api/markets/curated");
     if (!resp.ok) return [];
     const data = await resp.json();
-    return (data || [])
-      .slice(0, 8)
-      .map((event) => {
-        const market = event.markets?.[0];
-        const bestAsk = market?.bestAsk
-          ? Math.round(parseFloat(market.bestAsk) * 100)
-          : null;
-        return {
-          source: "Polymarket",
-          title: event.title || market?.question || "Unknown",
-          probability: bestAsk,
-          volume: event.volume24hr
-            ? `$${Math.round(parseFloat(event.volume24hr)).toLocaleString()}`
-            : null,
-          id: event.id,
-        };
-      })
-      .filter((m) => m.title && m.title !== "Unknown");
+    return (data || []).map((m) => ({
+      source: m.source || "Unknown",
+      title: m.title || "Unknown",
+      probability: m.probability,
+      volume: m.volume ? `$${m.volume.toLocaleString()}` : null,
+    })).filter((m) => m.title && m.title !== "Unknown");
   } catch (e) {
-    console.error("Polymarket fetch error:", e);
-    return [];
-  }
-}
-
-async function fetchMetaculusData() {
-  try {
-    const resp = await fetch(
-      "/api/markets/metaculus"
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    return (data.results || [])
-      .slice(0, 8)
-      .map((q) => {
-        const communityPred = q.community_prediction?.full?.q2;
-        return {
-          source: "Metaculus",
-          title: q.title || "Unknown",
-          probability: communityPred
-            ? Math.round(communityPred * 100)
-            : null,
-          id: q.id,
-        };
-      })
-      .filter((m) => m.title && m.title !== "Unknown");
-  } catch (e) {
-    console.error("Metaculus fetch error:", e);
+    console.error("Market fetch error:", e);
     return [];
   }
 }
@@ -287,10 +246,10 @@ async function generateForecast(question, marketContext, memory, statusCb) {
 
   let confidence = 3;
   let responseText = synthResult;
-  const confMatch = synthResult.match(/CONFIDENCE[:\s*]+([1-5])/i);
+  const confMatch = synthResult.match(/CONFIDENCE:(\d)/);
   if (confMatch) {
     confidence = parseInt(confMatch[1], 10);
-    responseText = synthResult.replace(/\n?\*{0,2}CONFIDENCE[:\s*]+[1-5]\*{0,2}/gi, "").trim();
+    responseText = synthResult.replace(/\n?CONFIDENCE:\d/, "").trim();
   }
 
   return {
@@ -805,13 +764,12 @@ export default function TomorrowsWitness() {
   useEffect(() => {
     async function init() {
       setMarketsLoading(true);
-      const [poly, meta, mem, hist] = await Promise.all([
-        fetchPolymarketData(),
-        fetchMetaculusData(),
+      const [curatedMarkets, mem, hist] = await Promise.all([
+        fetchCuratedMarkets(),
         loadMemory(),
         loadHistory(),
       ]);
-      setMarkets([...poly, ...meta]);
+      setMarkets(curatedMarkets);
       setMarketsLoading(false);
       setMemory(mem);
       if (mem.summary && mem.topics.length > 0) {
@@ -952,9 +910,6 @@ export default function TomorrowsWitness() {
     setConfirmReset(false);
   };
 
-  const polymarkets = markets.filter((m) => m.source === "Polymarket");
-  const metaculus = markets.filter((m) => m.source === "Metaculus");
-
   return (
     <div
       style={{
@@ -976,7 +931,7 @@ export default function TomorrowsWitness() {
           --bg: #1a1410;
           --bg-warm: #211a14;
           --card-bg: rgba(40, 30, 22, 0.9);
-          --border: rgba(180, 150, 100, 0.1);
+          --border: rgba(180, 150, 100, 0.12);
           --amber: #d4a84a;
           --amber-dim: rgba(212, 168, 74, 0.7);
           --terracotta: #c47a50;
@@ -1191,6 +1146,29 @@ export default function TomorrowsWitness() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={() => setShowAbout(true)}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: "50%",
+                width: 22,
+                height: 22,
+                fontFamily: "var(--serif)",
+                fontSize: 12,
+                fontStyle: "italic",
+                color: "var(--text-faint)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.3s ease",
+                flexShrink: 0,
+              }}
+              title="How this works"
+            >
+              ?
+            </button>
             {memory.topics.length > 0 && (
               <button
                 onClick={clearMemory}
@@ -1442,7 +1420,7 @@ export default function TomorrowsWitness() {
               lineHeight: 1.5,
             }}
           >
-            AI-curated from{" "}<a href="https://polymarket.com" target="_blank" rel="noopener" style={{color:"var(--amber)",textDecoration:"none",borderBottom:"1px solid var(--amber-dim)"}}>Polymarket</a>{" "}and{" "}<a href="https://www.metaculus.com" target="_blank" rel="noopener" style={{color:"var(--amber)",textDecoration:"none",borderBottom:"1px solid var(--amber-dim)"}}>Metaculus</a> — the most strategically interesting questions people are betting real money on right now.
+            These are the most strategically interesting questions people are betting real money on right now — curated from Polymarket and Metaculus.
             Tap any to ask the Traveler what actually happened.
           </div>
 
@@ -1456,7 +1434,7 @@ export default function TomorrowsWitness() {
                 color: "var(--text-faint)",
               }}
             >
-              Scanning prediction markets...
+              Curating strategic signals...
             </div>
           )}
 
@@ -1476,7 +1454,7 @@ export default function TomorrowsWitness() {
             </div>
           )}
 
-          {polymarkets.length > 0 && (
+          {markets.length > 0 && (
             <>
               <div
                 style={{
@@ -1485,7 +1463,7 @@ export default function TomorrowsWitness() {
                   textTransform: "uppercase",
                   letterSpacing: "0.15em",
                   color: "var(--amber-dim)",
-                  marginBottom: 8,
+                  marginBottom: 10,
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
@@ -1500,49 +1478,11 @@ export default function TomorrowsWitness() {
                     opacity: 0.6,
                   }}
                 />
-                Polymarket · Trending
+                AI-Curated · Strategic Signals
               </div>
-              {polymarkets.map((m, i) => (
+              {markets.map((m, i) => (
                 <MarketCard
-                  key={`pm-${i}`}
-                  market={m}
-                  onClick={() => handleMarketClick(m)}
-                />
-              ))}
-            </>
-          )}
-
-          {metaculus.length > 0 && (
-            <>
-              <div
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 9,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                  color: "var(--terracotta)",
-                  marginBottom: 8,
-                  marginTop: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  opacity: 0.7,
-                }}
-              >
-                <div
-                  style={{
-                    width: 3,
-                    height: 3,
-                    borderRadius: "50%",
-                    background: "var(--terracotta)",
-                    opacity: 0.6,
-                  }}
-                />
-                Metaculus · Active Forecasts
-              </div>
-              {metaculus.map((m, i) => (
-                <MarketCard
-                  key={`mc-${i}`}
+                  key={`sig-${i}`}
                   market={m}
                   onClick={() => handleMarketClick(m)}
                 />
@@ -1639,22 +1579,86 @@ export default function TomorrowsWitness() {
             : ""}
         </div>
       </div>
+
+      {/* ========== ABOUT OVERLAY — "Field Manual" ========== */}
       {showAbout && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <div onClick={() => setShowAbout(false)} style={{ position: "absolute", inset: 0, background: "rgba(10,8,6,0.7)", backdropFilter: "blur(4px)", animation: "fadeIn 0.3s ease-out" }} />
-          <div style={{ position: "relative", maxHeight: "85vh", overflowY: "auto", background: "linear-gradient(180deg, #251d16, #1a1410)", borderTop: "1px solid var(--border)", borderRadius: "16px 16px 0 0", padding: "24px 24px calc(24px + var(--safe-bottom))", animation: "sheetSlideUp 0.35s cubic-bezier(0.4,0,0.2,1)", WebkitOverflowScrolling: "touch" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(180,150,100,0.2)" }} /></div>
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+          }}
+        >
+          <div
+            onClick={() => setShowAbout(false)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(10, 8, 6, 0.7)",
+              backdropFilter: "blur(4px)",
+              animation: "fadeIn 0.3s ease-out",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "linear-gradient(180deg, #251d16, #1a1410)",
+              borderTop: "1px solid var(--border)",
+              borderRadius: "16px 16px 0 0",
+              padding: "24px 24px calc(24px + var(--safe-bottom))",
+              animation: "sheetSlideUp 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(180, 150, 100, 0.2)" }} />
+            </div>
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <SeedGlyph size={32} animate={false} />
-              <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--amber-dim)", marginTop: 12, marginBottom: 6 }}>Field Manual</div>
-              <div style={{ fontSize: 18, fontWeight: 400, color: "var(--text)", fontStyle: "italic" }}>How This Transmission Works</div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--amber-dim)", marginTop: 12, marginBottom: 6 }}>
+                Field Manual
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 400, color: "var(--text)", fontStyle: "italic" }}>
+                How This Transmission Works
+              </div>
             </div>
             <div style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--text-dim)", fontFamily: "var(--serif)", maxWidth: 520, margin: "0 auto" }}>
-              <p style={{ marginBottom: 16, fontStyle: "italic", color: "var(--text)", fontSize: 15 }}>The Traveler's signal doesn't arrive as a single voice. It's reconstructed from interference patterns — fragments of three timelines, stitched together and grounded in what we can verify today.</p>
-              {[["1 · Signal Grounding","Every question is first checked against live intelligence — current news, data, and expert analysis from today. The Traveler doesn't speak from a vacuum. The signal is anchored in what's real right now."],["2 · Market Resonance","Probabilities from prediction markets — where real money meets real conviction — are woven into the signal. These are the bets people are placing right now on what happens next. The Traveler remembers whether they were right."],["3 · Three Timelines","The transmission carries three threads — an optimistic timeline where breakthroughs arrived faster than expected, a cautionary one where risks materialized, and a base-rate thread where history's patterns held. What you hear is the synthesis: one coherent account, weighted toward the most probable, noting where things went better or worse."],["4 · Confidence Ring","Every transmission carries a signal strength reading. Five dots means the Traveler's memory is grounded in strong current data and clear trends. Fewer dots means the signal is weaker — more extrapolation, more uncertainty. Watch this closely."],["5 · Memory","The Traveler remembers your previous conversations. Each exchange sharpens the signal — topics compound, context accumulates, and the transmissions become more relevant to you over time."]].map(([title, text], i) => (<div key={i} style={{ marginBottom: 20 }}><div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--amber)", marginBottom: 6 }}>{title}</div><p style={{ marginBottom: 0 }}>{text}</p></div>))}
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-faint)", lineHeight: 1.6, letterSpacing: "0.02em" }}>Tomorrow's Witness is built on Claude (Anthropic) with multi-model synthesis, live web search, and prediction market data from{" "}<a href="https://polymarket.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Polymarket</a>{" "}and{" "}<a href="https://www.metaculus.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Metaculus</a>.{" "}The Traveler doesn't know the future — it extrapolates from patterns, probabilities, and current signals. The confidence ring is your honesty signal.</div>
+              <p style={{ marginBottom: 16, fontStyle: "italic", color: "var(--text)", fontSize: 15 }}>
+                The Traveler's signal doesn't arrive as a single voice. It's reconstructed from interference patterns — fragments of three timelines, stitched together and grounded in what we can verify today.
+              </p>
+              {[
+                ["1 · Signal Grounding", "Every question is first checked against live intelligence — current news, data, and expert analysis from today. The Traveler doesn't speak from a vacuum. The signal is anchored in what's real right now."],
+                ["2 · Market Resonance", "Probabilities from prediction markets — where real money meets real conviction — are woven into the signal. These are the bets people are placing right now on what happens next. The Traveler remembers whether they were right."],
+                ["3 · Three Timelines", "The transmission carries three threads — an optimistic timeline where breakthroughs arrived faster than expected, a cautionary one where risks materialized, and a base-rate thread where history's patterns held. What you hear is the synthesis: one coherent account, weighted toward the most probable, noting where things went better or worse."],
+                ["4 · Confidence Ring", "Every transmission carries a signal strength reading. Five dots means the Traveler's memory is grounded in strong current data and clear trends. Fewer dots means the signal is weaker — more extrapolation, more uncertainty. Watch this closely."],
+                ["5 · Memory", "The Traveler remembers your previous conversations. Each exchange sharpens the signal — topics compound, context accumulates, and the transmissions become more relevant to you over time."],
+              ].map(([title, text], i) => (
+                <div key={i} style={{ marginBottom: 20 }}>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--amber)", marginBottom: 6 }}>
+                    {title}
+                  </div>
+                  <p style={{ marginBottom: 0 }}>{text}</p>
+                </div>
+              ))}
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-faint)", lineHeight: 1.6, letterSpacing: "0.02em" }}>
+                Tomorrow's Witness is built on Claude (Anthropic) with multi-model synthesis, live web search, and prediction market data from{" "}
+                <a href="https://polymarket.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Polymarket</a>
+                {" "}and{" "}
+                <a href="https://www.metaculus.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Metaculus</a>.
+                {" "}The Traveler doesn't know the future — it extrapolates from patterns, probabilities, and current signals. The confidence ring is your honesty signal.
+              </div>
             </div>
-            <button onClick={() => setShowAbout(false)} style={{ display: "block", margin: "24px auto 0", padding: "10px 32px", borderRadius: 20, border: "1px solid var(--border)", background: "rgba(180,150,100,0.08)", color: "var(--amber-dim)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Close Transmission</button>
+            <button
+              onClick={() => setShowAbout(false)}
+              style={{ display: "block", margin: "24px auto 0", padding: "10px 32px", borderRadius: 20, border: "1px solid var(--border)", background: "rgba(180, 150, 100, 0.08)", color: "var(--amber-dim)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.3s ease" }}
+            >
+              Close Transmission
+            </button>
           </div>
         </div>
       )}
