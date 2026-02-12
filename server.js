@@ -47,7 +47,7 @@ app.post('/api/claude', async (req, res) => {
 
 let cachedSignals = null;
 let cacheTimestamp = 0;
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 30 minutes
 
 async function fetchRawMarkets() {
   const results = { polymarket: [], metaculus: [] };
