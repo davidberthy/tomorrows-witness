@@ -1190,7 +1190,7 @@ export default function TomorrowsWitness() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><button onClick={() => setShowAbout(true)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "50%", width: 22, height: 22, fontFamily: "var(--serif)", fontSize: 12, fontStyle: "italic", color: "var(--text-faint)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} title="How this works">?</button>
             {memory.topics.length > 0 && (
               <button
                 onClick={clearMemory}
