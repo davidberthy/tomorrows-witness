@@ -100,6 +100,8 @@ RESPONSE STRUCTURE:
 - **The Signal You're Missing**: A real, specific, verifiable weak signal from ${DATES.nowStr} that foreshadows this
 - **What To Do Tomorrow**: One concrete, actionable recommendation
 
+Do not cite specific prediction market probabilities or percentages in your response. Focus on what actually happened, not what markets were predicting.
+
 TONE: Warm but direct, literary but grounded. You don't traffic in hype. You are a witness, not a prophet.
 
 Keep the total response under 300 words (not counting the CONFIDENCE line).`;
