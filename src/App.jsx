@@ -1436,7 +1436,7 @@ export default function TomorrowsWitness() {
               lineHeight: 1.5,
             }}
           >
-            These are the questions people are betting real money on right now.
+            AI-curated from Polymarket and Metaculus — the most strategically interesting questions people are betting real money on right now.
             Tap any to ask the Traveler what actually happened.
           </div>
 
