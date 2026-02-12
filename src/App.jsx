@@ -1436,7 +1436,7 @@ export default function TomorrowsWitness() {
               lineHeight: 1.5,
             }}
           >
-            AI-curated from Polymarket and Metaculus — the most strategically interesting questions people are betting real money on right now.
+            AI-curated from{" "}<a href="https://polymarket.com" target="_blank" rel="noopener" style={{color:"var(--amber)",textDecoration:"none",borderBottom:"1px solid var(--amber-dim)"}}>Polymarket</a>{" "}and{" "}<a href="https://www.metaculus.com" target="_blank" rel="noopener" style={{color:"var(--amber)",textDecoration:"none",borderBottom:"1px solid var(--amber-dim)"}}>Metaculus</a> — the most strategically interesting questions people are betting real money on right now.
             Tap any to ask the Traveler what actually happened.
           </div>
 
