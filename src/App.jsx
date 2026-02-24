@@ -315,6 +315,31 @@ async function generateForecast(question, marketContext, memory, statusCb) {
   };
 }
 
+async function handleFollowUp(messages, statusCb) {
+  statusCb("Continuing the conversation...");
+  
+  const conversationSystem = PERSONA_BASE + "\n\n" +
+    "You are continuing a conversation with someone about a forecast you already gave. " +
+    "They are asking a follow-up question, requesting clarification, or wanting to discuss your prediction further.\n\n" +
+    "RULES:\n" +
+    "- Stay in character as the time traveler\n" +
+    "- Reference your previous response naturally\n" +
+    "- Keep responses concise (100-150 words)\n" +
+    "- Do not repeat the full forecast structure (What Happened / Signal / What To Do)\n" +
+    "- Just have a natural conversation about the topic\n" +
+    "- If they ask a genuinely NEW question about a different topic, tell them to ask it fresh\n" +
+    "- Do not use markdown formatting. Write in plain text.";
+
+  const claudeMessages = messages.map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  const result = await callClaude(conversationSystem, claudeMessages, false, "claude-sonnet-4-6");
+  return { text: result, confidence: null };
+}
+
+
 // ==========================================
 // MEMORY UPDATER
 // ==========================================
@@ -903,13 +928,23 @@ export default function TomorrowsWitness() {
     setLoadingStatus("Establishing temporal link...");
 
     try {
-      const marketContext = buildMarketContext(text);
-      const result = await generateForecast(
-        text.trim(),
-        marketContext,
-        memory,
-        setLoadingStatus
-      );
+      const hasHistory = newMessages.filter(m => m.role === "assistant").length > 0;
+      const shortMsg = text.trim().split(" ").length < 12;
+      const followUpPattern = /^(why|how come|what about|tell me more|explain|can you|but |and |really|interesting|so |hmm|wow|thanks|thank you|ok |okay|got it|i see|what do you mean|could you|elaborate|go deeper|what if|do you think)/i;
+      const isFollowUp = hasHistory && shortMsg && followUpPattern.test(text.trim());
+
+      let result;
+      if (isFollowUp) {
+        result = await handleFollowUp(newMessages, setLoadingStatus);
+      } else {
+        const marketContext = buildMarketContext(text);
+        result = await generateForecast(
+          text.trim(),
+          marketContext,
+          memory,
+          setLoadingStatus
+        );
+      }
 
       const assistantMessage = {
         role: "assistant",
