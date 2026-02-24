@@ -446,6 +446,31 @@ function renderText(text) {
               </div>
             );
           }
+          // Check for plain-text section headers like 'What Happened:'
+          const sectionMatch = line.match(/^(What Happened|The Signal You.re Missing|What To Do Tomorrow):?\s*(.*)/);
+          if (sectionMatch) {
+            return (
+              <div key={li} style={{ marginTop: li > 0 ? 8 : 0 }}>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color: "var(--amber)",
+                    fontSize: "0.88em",
+                    fontFamily: "var(--mono)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {sectionMatch[1]}
+                </span>
+                {sectionMatch[2] && (
+                  <span style={{ display: "block", marginTop: 3 }}>
+                    {renderInlineBold(sectionMatch[2])}
+                  </span>
+                )}
+              </div>
+            );
+          }
           // Regular line with possible inline bold
           return (
             <span key={li} style={{ display: li > 0 ? "block" : "inline" }}>
