@@ -447,7 +447,7 @@ function renderText(text) {
             );
           }
           // Check for plain-text section headers like 'What Happened:'
-          const sectionMatch = line.match(/^(What Happened|The Signal You.re Missing|What To Do Tomorrow):?\s*(.*)/);
+          const sectionMatch = line.match(/^(What Happened|The Signal You.re Missing|The Signal You Are Missing|What To Do Tomorrow):?\s*(.*)/);
           if (sectionMatch) {
             return (
               <div key={li} style={{ marginTop: li > 0 ? 8 : 0 }}>
