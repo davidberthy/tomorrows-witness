@@ -993,7 +993,18 @@ export default function TomorrowsWitness() {
     try {
       const hasHistory = newMessages.filter(m => m.role === "assistant").length > 0;
       const shortMsg = text.trim().split(" ").length < 12;
-      const isFollowUp = hasHistory && shortMsg;
+      let isFollowUp = false;
+      if (hasHistory) {
+        const lastAssistant = newMessages.filter(m => m.role === "assistant").pop();
+        const classifyResult = await callClaude(
+          "You are a conversation router. Given the previous assistant message and the new user message, decide: is the user asking a FOLLOW-UP about the same topic, or a NEW QUESTION about a different topic? Respond with exactly one word: FOLLOWUP or NEW",
+          [
+            { role: "user", content: "Previous response: " + (lastAssistant?.content || "").slice(0, 300) + "\n\nNew message: " + text.trim() }
+          ],
+          false, "claude-sonnet-4-6"
+        ).catch(() => "NEW");
+        isFollowUp = classifyResult.trim().toUpperCase().includes("FOLLOWUP");
+      }
 
       let result;
       if (isFollowUp) {
