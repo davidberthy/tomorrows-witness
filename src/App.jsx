@@ -227,9 +227,9 @@ async function fetchMetaculusData() {
 // AI ENGINE — Multi-model + Web Search
 // ==========================================
 
-async function callClaude(system, messages, useSearch = false) {
+async function callClaude(system, messages, useSearch = false, model = "claude-sonnet-4-5-20250929") {
   const body = {
-    model: "claude-sonnet-4-20250514",
+    model,
     max_tokens: 1000,
     system,
     messages,
@@ -296,7 +296,7 @@ async function generateForecast(question, marketContext, memory, statusCb) {
 
   const synthResult = await callClaude(synthSystem, [
     { role: "user", content: groundedContent },
-  ]);
+  ], false, "claude-sonnet-4-6");
 
   let confidence = 3;
   let responseText = synthResult;
