@@ -119,6 +119,16 @@ Do not use markdown formatting (no ##, no **, no bullet points). Use plain text 
 
 Keep the total response under 300 words (not counting the CONFIDENCE line).`;
 
+const LENS_CROSSMODEL = `You are an independent analyst providing a contrarian cross-check on a forecast about the future.
+
+YOUR METHOD:
+1. You are deliberately looking for what other forecasters might miss — blind spots, overlooked second-order effects, or consensus assumptions that may be wrong.
+2. Start from base rates and historical analogies. How often do events like this actually play out as expected?
+3. Guard against acquiescence bias: do not assume events will happen just because they are being discussed.
+4. If the conventional wisdom seems right, say so — but explain why. If you see a crack in the consensus, flag it.
+
+Keep your response to 120 words max. Be specific and concrete. State your implicit probability (e.g. "historically this is a 30/70 proposition").`;
+
 const PLACEHOLDER_PROMPT = `What surprised everyone about ${DATES.midYear}?`;
 
 // ==========================================
@@ -229,6 +239,31 @@ async function fetchMetaculusData() {
 // AI ENGINE — Multi-model + Web Search
 // ==========================================
 
+async function callOpenAI(system, userContent) {
+  try {
+    const response = await fetch("/api/openai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userContent },
+        ],
+      }),
+    });
+    const data = await response.json();
+    if (data.choices && data.choices[0]) {
+      return data.choices[0].message.content;
+    }
+    return "Cross-model perspective unavailable.";
+  } catch (err) {
+    console.error("OpenAI error:", err);
+    return "Cross-model perspective unavailable.";
+  }
+}
+
 async function callClaude(system, messages, useSearch = false, model = "claude-sonnet-4-5-20250929") {
   const body = {
     model,
@@ -274,8 +309,8 @@ async function generateForecast(question, marketContext, memory, statusCb) {
   const groundedContent = userContent + searchContext;
   const groundedMsg = [{ role: "user", content: groundedContent }];
 
-  statusCb("Consulting three timelines...");
-  const [optimist, pessimist, baseCase] = await Promise.all([
+  statusCb("Consulting four timelines...");
+  const [optimist, pessimist, baseCase, crossModel] = await Promise.all([
     callClaude(LENS_OPTIMIST, groundedMsg).catch(
       () => "Optimistic perspective unavailable."
     ),
@@ -285,10 +320,13 @@ async function generateForecast(question, marketContext, memory, statusCb) {
     callClaude(LENS_BASECASE, groundedMsg).catch(
       () => "Base-rate perspective unavailable."
     ),
+    callOpenAI(LENS_CROSSMODEL, groundedContent).catch(
+      () => "Cross-model perspective unavailable."
+    ),
   ]);
 
   statusCb("Weaving the threads...");
-  const perspectives = `OPTIMIST MEMORY:\n${optimist}\n\nCAUTIONARY MEMORY:\n${pessimist}\n\nBASE-RATE MEMORY:\n${baseCase}`;
+  const perspectives = `OPTIMIST MEMORY:\n${optimist}\n\nCAUTIONARY MEMORY:\n${pessimist}\n\nBASE-RATE MEMORY:\n${baseCase}\n\nINDEPENDENT CROSS-MODEL ANALYSIS (from a different AI system):\n${crossModel}`;
   const memoryStr = memory.summary || "No previous conversations.";
 
   const synthSystem = SYNTHESIZER_PROMPT.replace(

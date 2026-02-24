@@ -58,6 +58,34 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// OPENAI PROXY — Cross-model lens
+// ==========================================
+app.post('/api/openai', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+  }
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error('OpenAI API error:', err);
+    res.status(500).json({ error: 'Failed to reach OpenAI API' });
+  }
+});
+
 // ==========================================
 // CURATED MARKET SIGNALS
 // Pull wide, let Claude curate the best ones
