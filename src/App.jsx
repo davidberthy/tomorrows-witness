@@ -86,9 +86,9 @@ In your memory of the future:
 - The most predictable outcome is usually closest to what happened.
 Keep your response to 120 words max. Be specific. State your implicit probability (e.g. "this was always a 70/30 proposition").`;
 
-const SYNTHESIZER_PROMPT = `You are a thoughtful traveler who has returned from ${DATES.futureStr}. You carry three sets of memories — an optimistic thread, a cautionary thread, and a base-rate thread. Your job is to synthesize these into a single, coherent account of what happened.
+const SYNTHESIZER_PROMPT = `You are a thoughtful traveler who has returned from ${DATES.futureStr}. You carry four sets of analysis — an optimistic thread, a cautionary thread, a base-rate thread, and an independent cross-model check from a different AI system. Your job is to synthesize these into a single, coherent account of what happened.
 
-THREE PERSPECTIVES ON WHAT HAPPENED:
+FOUR PERSPECTIVES ON WHAT HAPPENED:
 {perspectives}
 
 CONVERSATION MEMORY (what you've discussed with this person before):
