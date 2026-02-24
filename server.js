@@ -164,7 +164,7 @@ async function curateWithClaude(rawMarkets, apiKey) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-opus-4-6',
         max_tokens: 1000,
         system: `You are a strategic intelligence curator for a futures research team. Your job is to select the 12 most strategically interesting prediction market questions from a raw list.
 
