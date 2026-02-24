@@ -993,8 +993,7 @@ export default function TomorrowsWitness() {
     try {
       const hasHistory = newMessages.filter(m => m.role === "assistant").length > 0;
       const shortMsg = text.trim().split(" ").length < 12;
-      const followUpPattern = /^(why|how come|what about|tell me more|explain|can you|but |and |really|interesting|so |hmm|wow|thanks|thank you|ok |okay|got it|i see|what do you mean|could you|elaborate|go deeper|what if|do you think)/i;
-      const isFollowUp = hasHistory && shortMsg && followUpPattern.test(text.trim());
+      const isFollowUp = hasHistory && shortMsg;
 
       let result;
       if (isFollowUp) {
