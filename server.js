@@ -125,25 +125,24 @@ async function fetchRawMarkets() {
     console.error('Polymarket fetch error:', e);
   }
 
-  // Pull 20 from Metaculus
+  // Pull 20 from Manifold Markets
   try {
     const resp = await fetch(
-      'https://www.metaculus.com/api2/questions/?limit=20&order_by=-activity&status=open&type=forecast&forecast_type=binary'
+      'https://api.manifold.markets/v0/search-markets?sort=most-popular&filter=open&contractType=BINARY&limit=20'
     );
     if (resp.ok) {
       const data = await resp.json();
-      results.metaculus = (data.results || []).map((q) => {
-        const communityPred = q.community_prediction?.full?.q2;
+      results.metaculus = (data || []).map((m) => {
         return {
-          source: 'Metaculus',
-          title: q.title || '',
-          probability: communityPred ? Math.round(communityPred * 100) : null,
-          forecasters: q.number_of_forecasters || 0,
+          source: 'Manifold',
+          title: m.question || '',
+          probability: m.probability != null ? Math.round(m.probability * 100) : null,
+          forecasters: m.uniqueBettorCount || 0,
         };
       }).filter(m => m.title);
     }
   } catch (e) {
-    console.error('Metaculus fetch error:', e);
+    console.error('Manifold fetch error:', e);
   }
 
   return results;
@@ -152,7 +151,7 @@ async function fetchRawMarkets() {
 async function curateWithClaude(rawMarkets, apiKey) {
   const allQuestions = [
     ...rawMarkets.polymarket.map(m => `[Polymarket] "${m.title}" (${m.probability}% probability, $${m.volume.toLocaleString()} volume)`),
-    ...rawMarkets.metaculus.map(m => `[Metaculus] "${m.title}" (${m.probability}% probability, ${m.forecasters} forecasters)`),
+    ...rawMarkets.metaculus.map(m => `[Manifold] "${m.title}" (${m.probability}% probability, ${m.forecasters} traders)`),
   ].join('\n');
 
   try {
@@ -261,16 +260,16 @@ app.get('/api/markets/polymarket', async (req, res) => {
   }
 });
 
-app.get('/api/markets/metaculus', async (req, res) => {
+app.get('/api/markets/manifold', async (req, res) => {
   try {
     const response = await fetch(
-      'https://www.metaculus.com/api2/questions/?limit=8&order_by=-activity&status=open&type=forecast&forecast_type=binary'
+      'https://api.manifold.markets/v0/search-markets?sort=most-popular&filter=open&contractType=BINARY&limit=12'
     );
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error('Metaculus error:', err);
-    res.json({ results: [] });
+    console.error('Manifold error:', err);
+    res.json([]);
   }
 });
 
