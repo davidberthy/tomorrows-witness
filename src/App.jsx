@@ -219,13 +219,11 @@ async function fetchManifoldData() {
     return (data || [])
       .slice(0, 8)
       .map((q) => {
-        const communityPred = q.community_prediction?.full?.q2;
         return {
           source: "Manifold",
-          title: q.title || "Unknown",
-          probability: communityPred
-            ? Math.round(communityPred * 100)
-            : null,
+          title: q.question || "Unknown",
+          probability: q.probability != null ? Math.round(q.probability * 100) : null,
+          forecasters: q.uniqueBettorCount || 0,
           id: q.id,
         };
       })
