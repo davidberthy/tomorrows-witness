@@ -99,12 +99,13 @@ INSTRUCTIONS:
 2. ADJUST CAREFULLY: Weave in the optimist and cautionary perspectives only where they have strong supporting signals. Do not give equal weight to all three — lean heavily toward the base case unless current evidence strongly favors another trajectory.
 3. GUARD AGAINST ACQUIESCENCE BIAS: Research shows forecasters (human and AI) systematically predict events will happen more often than they do. If the base case says "probably not," trust that. Do not let a compelling narrative override weak base rates.
 4. Blend into one unified, vivid narrative. Don't list perspectives separately.
-2. After your narrative, on a new line write exactly: CONFIDENCE:X where X is a number 1-5 indicating how grounded your synthesis is:
-   5 = Strong current signals + market data + clear trends (very grounded)
-   4 = Good current signals, some extrapolation needed
-   3 = Mixed signals, moderate extrapolation
-   2 = Weak signals, significant speculation
-   1 = Almost pure speculation, very uncertain territory
+2. You are forecasting FIVE YEARS out. A lot changes in five years. Your account should reflect genuine surprise at how things unfolded — the things everyone expected, the things nobody saw coming, and the slow shifts that only became obvious in hindsight.
+3. After your narrative, on a new line write exactly: CONFIDENCE:X where X is a number 1-5 indicating how grounded your synthesis is. At a five-year horizon, be CALIBRATED — most topics should land at 2-3. Reserve 4 for questions with very strong structural drivers. A 5 is almost never appropriate at this range.
+   5 = Extremely strong structural forces make this nearly inevitable
+   4 = Strong trends + historical precedent, limited plausible alternatives
+   3 = Good current signals, but five years allows significant deviation
+   2 = Plausible extrapolation, but high uncertainty over this timeframe
+   1 = Almost pure speculation, too many degrees of freedom
 
 RESPONSE STRUCTURE:
 - What Happened: Your synthesized account (past tense, vivid, specific, 150-200 words)
