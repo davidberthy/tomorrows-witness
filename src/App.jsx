@@ -216,7 +216,7 @@ async function fetchManifoldData() {
     );
     if (!resp.ok) return [];
     const data = await resp.json();
-    return (data.results || [])
+    return (data || [])
       .slice(0, 8)
       .map((q) => {
         const communityPred = q.community_prediction?.full?.q2;
