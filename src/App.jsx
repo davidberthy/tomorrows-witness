@@ -621,7 +621,7 @@ function LoadingState({ status }) {
               fontFamily: "var(--mono)",
             }}
           >
-            The Traveler · {DATES.futureYear}
+            <img src="/traveler.png" alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", objectPosition: "center 15%", marginRight: 8, verticalAlign: "middle", opacity: 0.8 }} />The Traveler · {DATES.futureYear}
           </span>
         </div>
         <div
@@ -829,7 +829,7 @@ function MessageBubble({ role, content, confidence }) {
                 fontFamily: "var(--mono)",
               }}
             >
-              The Traveler · {DATES.futureYear}
+              <img src="/traveler.png" alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", objectPosition: "center 15%", marginRight: 8, verticalAlign: "middle", opacity: 0.8 }} />The Traveler · {DATES.futureYear}
             </span>
           </div>
         )}
@@ -1443,22 +1443,11 @@ export default function TomorrowsWitness() {
                 animation: "fadeIn 1s ease-out",
               }}
             >
-              <div style={{ position: "relative" }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    width: 100,
-                    height: 100,
-                    borderRadius: "50%",
-                    background:
-                      "radial-gradient(circle, rgba(196, 153, 60, 0.08), rgba(176, 104, 64, 0.04), transparent 70%)",
-                    transform: "translate(-50%, -50%)",
-                    filter: "blur(12px)",
-                  }}
-                />
-                <SeedGlyph size={64} animate={false} />
+              <div style={{ position: "relative", width: 140, height: 140 }}>
+                <img src="/traveler.png" alt="" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover", objectPosition: "center 15%", opacity: 0.9 }} />
+                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
+                  <SeedGlyph size={80} animate={false} />
+                </div>
               </div>
               <div
                 style={{ marginTop: 28, textAlign: "center", maxWidth: 320 }}
