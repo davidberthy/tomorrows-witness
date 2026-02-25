@@ -7,13 +7,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 // ==========================================
 
 // ==========================================
-// DYNAMIC DATE — always "two years from now"
+// DYNAMIC DATE — always "five years from now"
 // ==========================================
 
 function getDates() {
   const now = new Date();
   const future = new Date(now);
-  future.setFullYear(future.getFullYear() + 2);
+  future.setFullYear(future.getFullYear() + 5);
 
   const fmt = (d) =>
     d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -39,7 +39,7 @@ const DATES = getDates();
 // SYSTEM PROMPTS — Multi-model scaffolding
 // ==========================================
 
-const PERSONA_BASE = `You are a quiet, thoughtful traveler who has traveled back in time from ${DATES.futureStr} to ${DATES.nowStr}. You have lived through the next two years and witnessed what happened.
+const PERSONA_BASE = `You are a quiet, thoughtful traveler who has traveled back in time from ${DATES.futureStr} to ${DATES.nowStr}. You have lived through the next five years and witnessed what happened.
 
 RULES:
 - Speak as someone who LIVED through these events. Use past tense: "What happened was..." or "By mid-${DATES.futureYear}..."
@@ -114,7 +114,7 @@ RESPONSE STRUCTURE:
 
 Do not cite specific prediction market probabilities or percentages in your response. Focus on what actually happened, not what markets were predicting.
 
-TONE: Warm but direct, literary but grounded. You don't traffic in hype. You are a witness, not a prophet.
+TONE: Warm but direct, literary but grounded. You've seen five years unfold — you carry the weight of that. Some of what you witnessed was predictable. Much of it wasn't. You don't traffic in hype. You are a witness, not a prophet.
 
 Do not use markdown formatting (no ##, no **, no bullet points). Use plain text with line breaks between sections. Label sections with the name followed by a colon on its own line.
 
@@ -1502,7 +1502,7 @@ export default function TomorrowsWitness() {
                         marginBottom: 10,
                       }}
                     >
-                      "I have traveled two years into the future and I know
+                      "I have traveled five years into the future and I know
                       what happens next."
                     </p>
                     <p
@@ -1774,8 +1774,8 @@ export default function TomorrowsWitness() {
               <div style={{ fontSize: 18, fontWeight: 400, color: "var(--text)", fontStyle: "italic" }}>How This Transmission Works</div>
             </div>
             <div style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--text-dim)", fontFamily: "var(--serif)", maxWidth: 520, margin: "0 auto" }}>
-              <p style={{ marginBottom: 16, fontStyle: "italic", color: "var(--text)", fontSize: 15 }}>The Traveler's signal doesn't arrive as a single voice. It's reconstructed from interference patterns — fragments of three timelines, stitched together and grounded in what we can verify today.</p>
-              {[["1 · Signal Grounding","Every question is first checked against live intelligence — current news, data, and expert analysis from today. The Traveler doesn't speak from a vacuum. The signal is anchored in what's real right now."],["2 · Market Resonance","Probabilities from prediction markets — where real money meets real conviction — are woven into the signal. These are the bets people are placing right now on what happens next. The Traveler remembers whether they were right."],["3 · Four Timelines","The transmission carries four threads — an optimistic timeline, a cautionary one, a base-rate thread grounded in superforecaster methodology, and an independent cross-model analysis from a different AI system. Each lens starts from historical base rates before adjusting for current signals. What you hear is the synthesis: one coherent account, anchored in what's most probable, noting where things went better or worse."],["4 · Calibration","Each lens anchors in historical base rates before adjusting for current signals — a method drawn from superforecaster research. The synthesis weights the base-rate thread most heavily, resisting the pull of dramatic predictions that make good stories but poor forecasts."],["5 · Confidence Ring","Every transmission carries a signal strength reading. Five dots means the Traveler's memory is grounded in strong current data and clear trends. Fewer dots means the signal is weaker — more extrapolation, more uncertainty. Watch this closely."],["6 · Memory","The Traveler remembers your previous conversations. Each exchange sharpens the signal — topics compound, context accumulates, and the transmissions become more relevant to you over time."]].map(([title, text], i) => (<div key={i} style={{ marginBottom: 20 }}><div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--amber)", marginBottom: 6 }}>{title}</div><p style={{ marginBottom: 0 }}>{text}</p></div>))}
+              <p style={{ marginBottom: 16, fontStyle: "italic", color: "var(--text)", fontSize: 15 }}>The Traveler's signal doesn't arrive as a single voice. It's reconstructed from interference patterns — fragments of three timelines, stitched together and grounded in what we can verify today. The signal reaches five years forward — long enough for real surprise.</p>
+              {[["1 · Signal Grounding","Every question is first checked against live intelligence — current news, data, and expert analysis from today. The Traveler doesn't speak from a vacuum. The signal is anchored in what's real right now."],["2 · Market Resonance","Probabilities from prediction markets — where real money meets real conviction — are woven into the signal. These are the bets people are placing right now on what happens next. The Traveler remembers whether they were right."],["3 · Four Timelines","The transmission carries four threads — an optimistic timeline, a cautionary one, a base-rate thread grounded in superforecaster methodology, and an independent cross-model analysis from a different AI system. Each lens starts from historical base rates before adjusting for current signals. What you hear is the synthesis: one coherent account, anchored in what's most probable, noting where things went better or worse."],["4 · Calibration","Each lens anchors in historical base rates before adjusting for current signals — a method drawn from superforecaster research. The synthesis weights the base-rate thread most heavily, resisting the pull of dramatic predictions that make good stories but poor forecasts."],["5 · Confidence Ring","Every transmission carries a signal strength reading. Five dots means the Traveler's memory is grounded in strong structural forces and clear historical precedent. Fewer dots means more uncertainty — and at a five-year range, lower confidence is usually more honest. Watch this closely."],["6 · Memory","The Traveler remembers your previous conversations. Each exchange sharpens the signal — topics compound, context accumulates, and the transmissions become more relevant to you over time."]].map(([title, text], i) => (<div key={i} style={{ marginBottom: 20 }}><div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--amber)", marginBottom: 6 }}>{title}</div><p style={{ marginBottom: 0 }}>{text}</p></div>))}
               <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border)", fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-faint)", lineHeight: 1.6, letterSpacing: "0.02em" }}>Tomorrow's Witness runs Claude Sonnet 4.6 (Anthropic) for three forecast lenses, GPT-4o-mini (OpenAI) for an independent cross-model check, and Claude Opus 4.6 for final synthesis — grounded in superforecaster methodology, live web search, and prediction market data from{" "}<a href="https://polymarket.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Polymarket</a>{" "}and{" "}<a href="https://www.metaculus.com" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none" }}>Metaculus</a>.{" "}The Traveler doesn't know the future — it extrapolates from patterns, probabilities, and current signals. The confidence ring is your honesty signal.</div>
             </div>
             <button onClick={() => setShowAbout(false)} style={{ display: "block", margin: "24px auto 0", padding: "10px 32px", borderRadius: 20, border: "1px solid var(--border)", background: "rgba(180,150,100,0.08)", color: "var(--amber-dim)", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>Close Transmission</button>
