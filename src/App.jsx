@@ -1449,11 +1449,8 @@ export default function TomorrowsWitness() {
                 animation: "fadeIn 1s ease-out",
               }}
             >
-              <div style={{ position: "relative", width: 140, height: 140 }}>
-                <img src="/traveler.png" alt="" style={{ width: 140, height: 140, borderRadius: "50%", objectFit: "cover", objectPosition: "center 15%", opacity: 0.9 }} />
-                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
-                  <SeedGlyph size={80} animate={false} />
-                </div>
+              <div style={{ position: "relative", width: 160, height: 160 }}>
+                <img src="/traveler.png" alt="" style={{ width: 160, height: 160, borderRadius: "50%", objectFit: "cover", objectPosition: "center", opacity: 0.95 }} />
               </div>
               <div
                 style={{ marginTop: 28, textAlign: "center", maxWidth: 320 }}
