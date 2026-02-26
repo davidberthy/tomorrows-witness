@@ -273,6 +273,70 @@ app.get('/api/markets/manifold', async (req, res) => {
   }
 });
 
+// Semantic market matching endpoint
+app.post('/api/markets/match', async (req, res) => {
+  const { question } = req.body;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  
+  if (!question || !apiKey) {
+    return res.json([]);
+  }
+
+  try {
+    // Get fresh raw markets (or use cached)
+    const rawMarkets = await fetchRawMarkets();
+    const allMarkets = [...rawMarkets.polymarket, ...rawMarkets.metaculus];
+    
+    if (allMarkets.length === 0) {
+      return res.json([]);
+    }
+
+    const marketList = allMarkets.map((m, i) => 
+      `${i}. [${m.source}] "${m.title}" (${m.probability}%)`
+    ).join('\n');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6-20250220',
+        max_tokens: 300,
+        system: `You are a relevance matcher. Given a user's question and a list of prediction market questions, identify which markets are DIRECTLY relevant to the user's question. Consider semantic meaning, not just keyword overlap. A market about "Taiwan invasion" is relevant to a question about "US-China relations." A market about "AI movie generation" is NOT relevant to a question about "housing prices."
+
+If NO markets are relevant, respond with exactly: []
+Otherwise respond with a JSON array of the market INDEX NUMBERS only. Example: [3, 7, 12]
+Respond with ONLY the JSON array, nothing else.`,
+        messages: [
+          { role: 'user', content: `User's question: "${question}"\n\nPrediction markets:\n${marketList}` }
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    const text = (data.content || []).map(b => b.type === 'text' ? b.text : '').join('').trim();
+    const clean = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
+    
+    if (clean === '[]') {
+      return res.json([]);
+    }
+
+    const indices = JSON.parse(clean);
+    const matched = indices
+      .filter(i => i >= 0 && i < allMarkets.length)
+      .map(i => allMarkets[i])
+      .slice(0, 5);
+    
+    res.json(matched);
+  } catch (err) {
+    console.error('Semantic match error:', err);
+    res.json([]);
+  }
+});
+
 // SPA fallback — serve index.html for all other routes
 
 // Log a question

@@ -955,25 +955,31 @@ export default function TomorrowsWitness() {
   }, [showIntro, isLoading]);
 
   const buildMarketContext = useCallback(
-    (questionText) => {
-      if (markets.length === 0) return "";
-      const keywords = questionText.toLowerCase().split(/\s+/);
-      const relevant = markets.filter((m) => {
-        const title = m.title.toLowerCase();
-        return keywords.some((kw) => kw.length > 3 && title.includes(kw));
-      });
-      const pick =
-        relevant.length > 0 ? relevant.slice(0, 5) : markets.slice(0, 5);
+    async (questionText) => {
+      try {
+        const resp = await fetch("/api/markets/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: questionText }),
+        });
+        if (!resp.ok) return "";
+        const matched = await resp.json();
+        if (!matched || matched.length === 0) return "";
 
-      let ctx = `\n\n[PREDICTION MARKET DATA — current ${DATES.nowShort}. Reference as what 'people were betting on back then'.]\n`;
-      pick.forEach((m) => {
-        ctx += `- ${m.source}: "${m.title}" → ${m.probability != null ? m.probability + "%" : "no consensus"}`;
-        if (m.volume) ctx += ` (${m.volume} vol)`;
-        ctx += "\n";
-      });
-      return ctx;
+        let ctx = `\n\n[PREDICTION MARKET DATA — current ${DATES.nowShort}. Reference as what 'people were betting on back then'.]\n`;
+        matched.forEach((m) => {
+          ctx += `- ${m.source}: "${m.title}" → ${m.probability != null ? m.probability + "%" : "no consensus"}`;
+          if (m.volume) ctx += ` ($${m.volume.toLocaleString()} vol)`;
+          if (m.forecasters) ctx += ` (${m.forecasters} traders)`;
+          ctx += "\n";
+        });
+        return ctx;
+      } catch (e) {
+        console.error("Market match error:", e);
+        return "";
+      }
     },
-    [markets]
+    []
   );
 
   const sendMessage = async (text) => {
@@ -1011,7 +1017,7 @@ export default function TomorrowsWitness() {
       if (isFollowUp) {
         result = await handleFollowUp(newMessages, setLoadingStatus);
       } else {
-        const marketContext = buildMarketContext(text);
+        const marketContext = await buildMarketContext(text);
         result = await generateForecast(
           text.trim(),
           marketContext,
