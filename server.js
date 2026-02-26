@@ -172,7 +172,7 @@ SELECTION CRITERIA (in priority order):
 2. STRATEGIC RELEVANCE: Prioritize questions about technology, AI, geopolitics, economic shifts, energy, trade, regulation, and institutional change. These spark the best strategic conversations.
 3. DIVERSITY: Pick across different domains — don't select 5 politics questions. Aim for a mix of tech, geopolitics, economics, science, and culture.
 4. ACTIONABILITY: Prefer questions where the outcome would change how someone plans or invests.
-5. SKIP: Sports betting, celebrity gossip, weather, trivial pop culture, and questions that are purely US partisan politics with no broader strategic implications.
+5. SKIP: ALL sports questions (NBA, NFL, FIFA, UFC, tennis, F1, individual matches, championships, player performance — no exceptions), celebrity gossip, weather, trivial pop culture, crypto price predictions for specific dates, and questions that are purely US partisan politics with no broader strategic implications.
 
 RESPOND WITH ONLY a JSON array of the selected question titles, exactly as they appear in the input. No other text. Example:
 ["Question title 1", "Question title 2", "Question title 3"]`,
