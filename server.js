@@ -125,24 +125,30 @@ async function fetchRawMarkets() {
     console.error('Polymarket fetch error:', e);
   }
 
-  // Pull 20 from Manifold Markets
+  // Pull events from Kalshi (real-money, CFTC-regulated)
   try {
     const resp = await fetch(
-      'https://api.manifold.markets/v0/search-markets?sort=most-popular&filter=open&contractType=BINARY&limit=20'
+      'https://api.elections.kalshi.com/trade-api/v2/events?limit=100&status=open&with_nested_markets=true'
     );
     if (resp.ok) {
       const data = await resp.json();
-      results.metaculus = (data || []).map((m) => {
-        return {
-          source: 'Manifold',
-          title: m.question || '',
-          probability: m.probability != null ? Math.round(m.probability * 100) : null,
-          forecasters: m.uniqueBettorCount || 0,
-        };
-      }).filter(m => m.title);
+      const skipCats = ['Sports', 'Sports & Gaming'];
+      results.metaculus = (data.events || [])
+        .filter(e => !skipCats.includes(e.category))
+        .filter(e => e.markets && e.markets.length > 0)
+        .map(e => {
+          const m = e.markets[0];
+          return {
+            source: 'Kalshi',
+            title: e.title || '',
+            probability: m.last_price || null,
+            volume: m.volume || 0,
+          };
+        })
+        .filter(m => m.title && m.probability != null && m.probability > 0);
     }
   } catch (e) {
-    console.error('Manifold fetch error:', e);
+    console.error('Kalshi fetch error:', e);
   }
 
   return results;
@@ -151,7 +157,7 @@ async function fetchRawMarkets() {
 async function curateWithClaude(rawMarkets, apiKey) {
   const allQuestions = [
     ...rawMarkets.polymarket.map(m => `[Polymarket] "${m.title}" (${m.probability}% probability, $${m.volume.toLocaleString()} volume)`),
-    ...rawMarkets.metaculus.map(m => `[Manifold] "${m.title}" (${m.probability}% probability, ${m.forecasters} traders)`),
+    ...rawMarkets.metaculus.map(m => `[Kalshi] "${m.title}" (${m.probability}% probability, ${m.forecasters} vol)`),
   ].join('\n');
 
   try {
@@ -260,10 +266,10 @@ app.get('/api/markets/polymarket', async (req, res) => {
   }
 });
 
-app.get('/api/markets/manifold', async (req, res) => {
+app.get('/api/markets/kalshi', async (req, res) => {
   try {
     const response = await fetch(
-      'https://api.manifold.markets/v0/search-markets?sort=most-popular&filter=open&contractType=BINARY&limit=12'
+      'https://api.elections.kalshi.com/trade-api/v2/events?limit=50&status=open&with_nested_markets=true'
     );
     const data = await response.json();
     res.json(data);
