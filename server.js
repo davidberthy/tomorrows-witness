@@ -34,18 +34,17 @@ app.use(express.static(join(__dirname, 'dist')));
 
 // Proxy endpoint for Anthropic API — keeps the key server-side
 app.post('/api/claude', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.INFERENCE_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    return res.status(500).json({ error: 'INFERENCE_KEY not configured' });
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://us.inference.heroku.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(req.body),
     });
@@ -161,12 +160,11 @@ async function curateWithClaude(rawMarkets, apiKey) {
   ].join('\n');
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://us.inference.heroku.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'claude-opus-4-6',
@@ -217,7 +215,7 @@ RESPOND WITH ONLY a JSON array of the selected question titles, exactly as they 
 
 // Curated signals endpoint
 app.get('/api/markets/curated', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.INFERENCE_KEY;
 
   // Return cache if fresh
   if (cachedSignals && Date.now() - cacheTimestamp < CACHE_TTL) {
@@ -282,7 +280,7 @@ app.get('/api/markets/kalshi', async (req, res) => {
 // Semantic market matching endpoint
 app.post('/api/markets/match', async (req, res) => {
   const { question } = req.body;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.INFERENCE_KEY;
   
   if (!question || !apiKey) {
     return res.json([]);
@@ -301,15 +299,14 @@ app.post('/api/markets/match', async (req, res) => {
       `${i}. [${m.source}] "${m.title}" (${m.probability}%)`
     ).join('\n');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://us.inference.heroku.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6-20250220',
+        model: 'claude-sonnet-4-6',
         max_tokens: 300,
         system: `You are a relevance matcher. Given a user's question and a list of prediction market questions, identify which markets are DIRECTLY relevant to the user's question. Consider semantic meaning, not just keyword overlap. A market about "Taiwan invasion" is relevant to a question about "US-China relations." A market about "AI movie generation" is NOT relevant to a question about "housing prices."
 
