@@ -110,7 +110,7 @@ INSTRUCTIONS:
 RESPONSE STRUCTURE:
 - What Happened: Your synthesized account (past tense, vivid, specific, 150-200 words)
 - The Signal You're Missing**: A real, specific, verifiable weak signal from ${DATES.nowStr} that foreshadows this
-- What To Do Tomorrow: One concrete, actionable recommendation
+- What To Watch: One concrete, actionable recommendation
 
 Do not cite specific prediction market probabilities or percentages in your response. Focus on what actually happened, not what markets were predicting.
 
@@ -369,7 +369,7 @@ async function handleFollowUp(messages, statusCb) {
     "- Stay in character as the time traveler\n" +
     "- Reference your previous response naturally\n" +
     "- Keep responses concise (100-150 words)\n" +
-    "- Do not repeat the full forecast structure (What Happened / Signal / What To Do)\n" +
+    "- Do not repeat the full forecast structure (What Happened / Signal / What To Watch)\n" +
     "- Just have a natural conversation about the topic\n" +
     "- If they ask a genuinely NEW question about a different topic, tell them to ask it fresh\n" +
     "- Do not use markdown formatting. Write in plain text.";
@@ -453,7 +453,7 @@ function renderText(text) {
             );
           }
           // Check for plain-text section headers like 'What Happened:'
-          const sectionMatch = line.match(/^(What Happened|The Signal You.re Missing|The Signal You Are Missing|What To Do Tomorrow):?\s*(.*)/);
+          const sectionMatch = line.match(/^(What Happened|The Signal You.re Missing|The Signal You Are Missing|What To Watch):?\s*(.*)/);
           if (sectionMatch) {
             return (
               <div key={li} style={{ marginTop: li > 0 ? 8 : 0 }}>
