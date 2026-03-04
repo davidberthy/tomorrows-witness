@@ -1120,12 +1120,12 @@ export default function TomorrowsWitness() {
           --card-bg: rgba(40, 30, 22, 0.9);
           --border: rgba(180, 150, 100, 0.1);
           --amber: #d4a84a;
-          --amber-dim: rgba(212, 168, 74, 0.7);
+          --amber-dim: rgba(212, 168, 74, 0.85);
           --terracotta: #c47a50;
           --glow: #8cc48c;
           --text: rgba(245, 235, 215, 0.95);
-          --text-dim: rgba(225, 210, 185, 0.8);
-          --text-faint: rgba(190, 170, 140, 0.45);
+          --text-dim: rgba(230, 215, 190, 0.9);
+          --text-faint: rgba(200, 180, 150, 0.6);
           --serif: 'Cormorant Garamond', Georgia, serif;
           --mono: 'DM Mono', monospace;
           --safe-bottom: env(safe-area-inset-bottom, 0px);
