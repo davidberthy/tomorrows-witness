@@ -1041,6 +1041,11 @@ export default function TomorrowsWitness() {
 
       await saveHistory(updatedMessages);
 
+      // Log forecast for Brier scoring
+      if (result.confidence != null) {
+        fetch("/api/log-forecast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text.trim(), confidence: result.confidence, predicted_outcome: result.text.slice(0, 500) }) }).catch(() => {});
+      }
+
       updateMemory(text.trim(), result.text, memory).then((updatedMem) => {
         setMemory(updatedMem);
       });

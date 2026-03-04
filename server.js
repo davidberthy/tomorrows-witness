@@ -28,6 +28,20 @@ pool.query(`
 `).then(() => console.log('Questions table ready'))
   .catch(err => console.error('DB init error:', err));
 
+pool.query(`
+  CREATE TABLE IF NOT EXISTS forecasts (
+    id SERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    confidence INT CHECK (confidence BETWEEN 1 AND 5),
+    predicted_outcome TEXT,
+    actual_outcome BOOLEAN,
+    resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ
+  )
+`).then(() => console.log('Forecasts table ready'))
+  .catch(err => console.error('Forecasts DB init error:', err));
+
 
 // Serve static files from the built app
 app.use(express.static(join(__dirname, 'dist')));
@@ -379,6 +393,132 @@ ${rows.map(r => '<div class="q"><div class="q-text">' + r.question.replace(/</g,
     res.send(html);
   } catch (err) {
     console.error('Admin error:', err);
+    res.status(500).send('Database error');
+  }
+});
+
+// Log a forecast for Brier scoring
+app.post('/api/log-forecast', async (req, res) => {
+  const { question, confidence, predicted_outcome } = req.body;
+  if (!question || !confidence) return res.json({ ok: false });
+  try {
+    await pool.query(
+      'INSERT INTO forecasts (question, confidence, predicted_outcome) VALUES ($1, $2, $3)',
+      [question.slice(0, 1000), confidence, predicted_outcome || null]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Forecast log error:', err);
+    res.json({ ok: false });
+  }
+});
+
+// Resolve a forecast (admin)
+app.post('/api/resolve-forecast', async (req, res) => {
+  const { id, outcome } = req.body;
+  if (!id || outcome === undefined) return res.json({ ok: false });
+  try {
+    await pool.query(
+      'UPDATE forecasts SET actual_outcome = $1, resolved = TRUE, resolved_at = NOW() WHERE id = $2',
+      [outcome, id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Resolve error:', err);
+    res.json({ ok: false });
+  }
+});
+
+// Brier Score admin dashboard
+app.get('/admin/brier', async (req, res) => {
+  try {
+    const all = await pool.query(
+      'SELECT * FROM forecasts ORDER BY created_at DESC LIMIT 500'
+    );
+    const rows = all.rows;
+    const resolved = rows.filter(r => r.resolved);
+    
+    // Calculate Brier score
+    // Convert confidence (1-5) to probability:
+    // 5 = 0.95, 4 = 0.80, 3 = 0.60, 2 = 0.40, 1 = 0.20
+    const confToProb = { 1: 0.20, 2: 0.40, 3: 0.60, 4: 0.80, 5: 0.95 };
+    
+    let brierSum = 0;
+    let brierCount = 0;
+    const buckets = { 1: { total: 0, correct: 0 }, 2: { total: 0, correct: 0 }, 3: { total: 0, correct: 0 }, 4: { total: 0, correct: 0 }, 5: { total: 0, correct: 0 } };
+    
+    resolved.forEach(r => {
+      const prob = confToProb[r.confidence] || 0.5;
+      const outcome = r.actual_outcome ? 1 : 0;
+      brierSum += (prob - outcome) ** 2;
+      brierCount++;
+      if (buckets[r.confidence]) {
+        buckets[r.confidence].total++;
+        if (r.actual_outcome) buckets[r.confidence].correct++;
+      }
+    });
+    
+    const brierScore = brierCount > 0 ? (brierSum / brierCount).toFixed(4) : 'N/A';
+    
+    const calibrationRows = [1,2,3,4,5].map(conf => {
+      const b = buckets[conf];
+      const actual = b.total > 0 ? (b.correct / b.total * 100).toFixed(0) : '-';
+      const expected = (confToProb[conf] * 100).toFixed(0);
+      return \`<tr><td>\${conf} dot\${ conf > 1 ? 's' : '' }</td><td>\${expected}%</td><td>\${actual}%</td><td>\${b.total}</td></tr>\`;
+    }).join('');
+    
+    const forecastRows = rows.map(r => {
+      const status = r.resolved ? (r.actual_outcome ? '<span style="color:#6fa86f">TRUE</span>' : '<span style="color:#c46a6a">FALSE</span>') : \`<button onclick="resolve(\${r.id}, true)" style="background:#2a3a2a;color:#6fa86f;border:1px solid #4a5a4a;padding:2px 8px;cursor:pointer;margin-right:4px;border-radius:3px">True</button><button onclick="resolve(\${r.id}, false)" style="background:#3a2a2a;color:#c46a6a;border:1px solid #5a4a4a;padding:2px 8px;cursor:pointer;border-radius:3px">False</button>\`;
+      return \`<tr><td style="max-width:400px;word-wrap:break-word">\${r.question.replace(/</g, '&lt;').slice(0, 120)}</td><td style="text-align:center">\${'●'.repeat(r.confidence)}\${'○'.repeat(5 - r.confidence)}</td><td>\${status}</td><td style="font-size:11px;color:rgba(230,215,190,0.4)">\${new Date(r.created_at).toLocaleDateString()}</td></tr>\`;
+    }).join('');
+
+    const html = \`<!DOCTYPE html>
+<html><head><title>Tomorrow's Witness — Brier Score Tracker</title>
+<style>
+  body { background: #1a1410; color: #e6d7be; font-family: 'Courier New', monospace; padding: 40px; max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 18px; color: #d4a84a; letter-spacing: 0.1em; text-transform: uppercase; }
+  h2 { font-size: 14px; color: #d4a84a; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 30px; }
+  .score-box { background: rgba(212,168,74,0.08); border: 1px solid rgba(212,168,74,0.2); border-radius: 8px; padding: 20px; margin: 20px 0; display: inline-block; }
+  .score-val { font-size: 36px; color: #d4a84a; font-weight: bold; }
+  .score-label { font-size: 11px; color: rgba(230,215,190,0.5); text-transform: uppercase; letter-spacing: 0.1em; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(230,215,190,0.4); padding: 8px; border-bottom: 1px solid rgba(180,150,100,0.2); }
+  td { padding: 8px; border-bottom: 1px solid rgba(180,150,100,0.08); font-size: 13px; }
+  .meta { font-size: 12px; color: rgba(230,215,190,0.4); margin-top: 8px; }
+</style>
+<script>
+async function resolve(id, outcome) {
+  await fetch('/api/resolve-forecast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, outcome })
+  });
+  location.reload();
+}
+</script>
+</head><body>
+<h1>Brier Score Tracker</h1>
+<div class="score-box">
+  <div class="score-val">\${brierScore}</div>
+  <div class="score-label">Brier Score (\${brierCount} resolved)</div>
+</div>
+<div class="meta">Below 0.20 = good · Below 0.10 = excellent · Best election forecasters: 0.06–0.12</div>
+
+<h2>Calibration Table</h2>
+<table>
+  <tr><th>Confidence</th><th>Expected %</th><th>Actual %</th><th>n</th></tr>
+  \${calibrationRows}
+</table>
+
+<h2>All Forecasts</h2>
+<table>
+  <tr><th>Question</th><th>Confidence</th><th>Outcome</th><th>Date</th></tr>
+  \${forecastRows}
+</table>
+</body></html>\`;
+    res.send(html);
+  } catch (err) {
+    console.error('Brier admin error:', err);
     res.status(500).send('Database error');
   }
 });
