@@ -335,7 +335,7 @@ Respond with ONLY the JSON array, nothing else.`,
 
     const data = await response.json();
     const text = (data.content || []).map(b => b.type === 'text' ? b.text : '').join('').trim();
-    const clean = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
+    const clean = text.replace(/```json|```/g, '').trim();
     
     if (clean === '[]') {
       return res.json([]);
@@ -464,15 +464,15 @@ app.get('/admin/brier', async (req, res) => {
       const b = buckets[conf];
       const actual = b.total > 0 ? (b.correct / b.total * 100).toFixed(0) : '-';
       const expected = (confToProb[conf] * 100).toFixed(0);
-      return \`<tr><td>\${conf} dot\${ conf > 1 ? 's' : '' }</td><td>\${expected}%</td><td>\${actual}%</td><td>\${b.total}</td></tr>\`;
+      return `<tr><td>${conf} dot${ conf > 1 ? 's' : '' }</td><td>${expected}%</td><td>${actual}%</td><td>${b.total}</td></tr>`;
     }).join('');
     
     const forecastRows = rows.map(r => {
-      const status = r.resolved ? (r.actual_outcome ? '<span style="color:#6fa86f">TRUE</span>' : '<span style="color:#c46a6a">FALSE</span>') : \`<button onclick="resolve(\${r.id}, true)" style="background:#2a3a2a;color:#6fa86f;border:1px solid #4a5a4a;padding:2px 8px;cursor:pointer;margin-right:4px;border-radius:3px">True</button><button onclick="resolve(\${r.id}, false)" style="background:#3a2a2a;color:#c46a6a;border:1px solid #5a4a4a;padding:2px 8px;cursor:pointer;border-radius:3px">False</button>\`;
-      return \`<tr><td style="max-width:400px;word-wrap:break-word">\${r.question.replace(/</g, '&lt;').slice(0, 120)}</td><td style="text-align:center">\${'●'.repeat(r.confidence)}\${'○'.repeat(5 - r.confidence)}</td><td>\${status}</td><td style="font-size:11px;color:rgba(230,215,190,0.4)">\${new Date(r.created_at).toLocaleDateString()}</td></tr>\`;
+      const status = r.resolved ? (r.actual_outcome ? '<span style="color:#6fa86f">TRUE</span>' : '<span style="color:#c46a6a">FALSE</span>') : `<button onclick="resolve(${r.id}, true)" style="background:#2a3a2a;color:#6fa86f;border:1px solid #4a5a4a;padding:2px 8px;cursor:pointer;margin-right:4px;border-radius:3px">True</button><button onclick="resolve(${r.id}, false)" style="background:#3a2a2a;color:#c46a6a;border:1px solid #5a4a4a;padding:2px 8px;cursor:pointer;border-radius:3px">False</button>`;
+      return `<tr><td style="max-width:400px;word-wrap:break-word">${r.question.replace(/</g, '&lt;').slice(0, 120)}</td><td style="text-align:center">${'●'.repeat(r.confidence)}${'○'.repeat(5 - r.confidence)}</td><td>${status}</td><td style="font-size:11px;color:rgba(230,215,190,0.4)">${new Date(r.created_at).toLocaleDateString()}</td></tr>`;
     }).join('');
 
-    const html = \`<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html><head><title>Tomorrow's Witness — Brier Score Tracker</title>
 <style>
   body { background: #1a1410; color: #e6d7be; font-family: 'Courier New', monospace; padding: 40px; max-width: 1000px; margin: 0 auto; }
@@ -499,23 +499,23 @@ async function resolve(id, outcome) {
 </head><body>
 <h1>Brier Score Tracker</h1>
 <div class="score-box">
-  <div class="score-val">\${brierScore}</div>
-  <div class="score-label">Brier Score (\${brierCount} resolved)</div>
+  <div class="score-val">${brierScore}</div>
+  <div class="score-label">Brier Score (${brierCount} resolved)</div>
 </div>
 <div class="meta">Below 0.20 = good · Below 0.10 = excellent · Best election forecasters: 0.06–0.12</div>
 
 <h2>Calibration Table</h2>
 <table>
   <tr><th>Confidence</th><th>Expected %</th><th>Actual %</th><th>n</th></tr>
-  \${calibrationRows}
+  ${calibrationRows}
 </table>
 
 <h2>All Forecasts</h2>
 <table>
   <tr><th>Question</th><th>Confidence</th><th>Outcome</th><th>Date</th></tr>
-  \${forecastRows}
+  ${forecastRows}
 </table>
-</body></html>\`;
+</body></html>`;
     res.send(html);
   } catch (err) {
     console.error('Brier admin error:', err);
