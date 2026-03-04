@@ -185,7 +185,10 @@ async function curateWithClaude(rawMarkets, apiKey) {
         max_tokens: 1000,
         system: `You are a strategic intelligence curator for a futures research team. Your job is to select the 12 most strategically interesting prediction market questions from a raw list.
 
-SELECTION CRITERIA (in priority order):
+HARD FILTER (apply first, before any selection):
+- REJECT ALL SPORTS: Any question about NBA, NFL, NHL, MLB, FIFA, UFC, F1, tennis, golf, cricket, boxing, MMA, esports, college sports, Olympics, individual athletes, teams, matches, championships, MVPs, player stats, or any sporting event. Zero sports questions in your output. If in doubt whether something is sports, exclude it.
+
+SELECTION CRITERIA (apply to remaining non-sports questions):
 1. GENUINE UNCERTAINTY: Prefer questions in the 20-80% probability range — these are where the interesting action is. Skip near-certainties (>90%) and long shots (<10%) unless they're unusually important.
 2. STRATEGIC RELEVANCE: Prioritize questions about technology, AI, geopolitics, economic shifts, energy, trade, regulation, and institutional change. These spark the best strategic conversations.
 3. DIVERSITY: Pick across different domains — don't select 5 politics questions. Aim for a mix of tech, geopolitics, economics, science, and culture.
