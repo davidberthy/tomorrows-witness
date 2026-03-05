@@ -1004,21 +1004,8 @@ export default function TomorrowsWitness() {
     // Log question (fire and forget)
     fetch("/api/log-question", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text.trim() }) }).catch(() => {});
 
-    // Extract content from attachment or URL
+    // PDF/URL extraction disabled until helpers are implemented
     let extraContent = "";
-    if (attachment) {
-      setLoadingStatus("Extracting document...");
-      const pdfText = await extractPdfContent(attachment);
-      if (pdfText) extraContent = "\n\n[ATTACHED DOCUMENT]:\n" + pdfText;
-      setAttachment(null);
-    } else {
-      const url = extractUrl(text.trim());
-      if (url) {
-        setLoadingStatus("Fetching article...");
-        const urlText = await fetchUrlContent(url);
-        if (urlText) extraContent = "\n\n[ARTICLE CONTENT from " + url + "]:\n" + urlText;
-      }
-    }
     setIsLoading(true);
     setLoadingStatus("Establishing temporal link...");
 
