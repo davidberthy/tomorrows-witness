@@ -1710,29 +1710,7 @@ export default function TomorrowsWitness() {
         }}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {/* file upload disabled */}
-          <button
-            onClick={() => {}}
-            disabled={isLoading}
-            title="Attach PDF"
-            style={{
-              background: "none",
-              border: "1px solid var(--border)",
-              borderRadius: "50%",
-              width: 36,
-              height: 36,
-              color: attachment ? "var(--amber)" : "var(--text-faint)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              fontSize: 16,
-              transition: "color 0.2s, border-color 0.2s",
-            }}
-          >
-            {attachment ? "\u2713" : "\u{1F4CE}"}
-          </button>
+
           <div style={{ flex: 1, position: "relative" }}>
             {attachment && (
               <div style={{
@@ -1756,7 +1734,7 @@ export default function TomorrowsWitness() {
               onChange={(e) => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleKeyDown(e); } }}
               placeholder={
-                showIntro ? PLACEHOLDER_PROMPT : "Ask what happens next... (paste text, drop a URL, or attach a PDF)"
+                showIntro ? PLACEHOLDER_PROMPT : "Ask what happens next..."
               }
               disabled={isLoading}
               rows={1}
