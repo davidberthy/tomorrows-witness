@@ -1723,9 +1723,9 @@ export default function TomorrowsWitness() {
         }}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input type="file" ref={fileRef} accept=".pdf" onChange={handleFileSelect} style={{ display: "none" }} />
+          {/* file upload disabled */}
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {}}
             disabled={isLoading}
             title="Attach PDF"
             style={{
