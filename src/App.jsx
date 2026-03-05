@@ -910,6 +910,8 @@ export default function TomorrowsWitness() {
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const [attachment, setAttachment] = useState(null);
 
   // Load markets + memory on mount
   useEffect(() => {
@@ -1001,6 +1003,22 @@ export default function TomorrowsWitness() {
 
     // Log question (fire and forget)
     fetch("/api/log-question", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text.trim() }) }).catch(() => {});
+
+    // Extract content from attachment or URL
+    let extraContent = "";
+    if (attachment) {
+      setLoadingStatus("Extracting document...");
+      const pdfText = await extractPdfContent(attachment);
+      if (pdfText) extraContent = "\n\n[ATTACHED DOCUMENT]:\n" + pdfText;
+      setAttachment(null);
+    } else {
+      const url = extractUrl(text.trim());
+      if (url) {
+        setLoadingStatus("Fetching article...");
+        const urlText = await fetchUrlContent(url);
+        if (urlText) extraContent = "\n\n[ARTICLE CONTENT from " + url + "]:\n" + urlText;
+      }
+    }
     setIsLoading(true);
     setLoadingStatus("Establishing temporal link...");
 
@@ -1026,7 +1044,7 @@ export default function TomorrowsWitness() {
       } else {
         const marketContext = await buildMarketContext(text);
         result = await generateForecast(
-          text.trim(),
+          text.trim() + extraContent,
           marketContext,
           memory,
           setLoadingStatus
@@ -1705,36 +1723,81 @@ export default function TomorrowsWitness() {
         }}
       >
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              showIntro ? PLACEHOLDER_PROMPT : "Ask what happens next..."
-            }
+          <input type="file" ref={fileRef} accept=".pdf" onChange={handleFileSelect} style={{ display: "none" }} />
+          <button
+            onClick={() => fileRef.current?.click()}
             disabled={isLoading}
+            title="Attach PDF"
             style={{
-              flex: 1,
-              padding: "12px 16px",
-              borderRadius: 20,
+              background: "none",
               border: "1px solid var(--border)",
-              background: "rgba(30, 22, 16, 0.9)",
-              color: "var(--text)",
-              fontSize: 15,
-              fontFamily: "var(--serif)",
-              outline: "none",
-              transition: "border-color 0.3s ease",
-              WebkitAppearance: "none",
+              borderRadius: "50%",
+              width: 36,
+              height: 36,
+              color: attachment ? "var(--amber)" : "var(--text-faint)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              fontSize: 16,
+              transition: "color 0.2s, border-color 0.2s",
             }}
-            onFocus={(e) => {
-              e.target.style.borderColor = "var(--amber-dim)";
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = "var(--border)";
-            }}
-          />
+          >
+            {attachment ? "\u2713" : "\u{1F4CE}"}
+          </button>
+          <div style={{ flex: 1, position: "relative" }}>
+            {attachment && (
+              <div style={{
+                position: "absolute",
+                top: -24,
+                left: 16,
+                fontSize: 11,
+                fontFamily: "var(--mono)",
+                color: "var(--amber-dim)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}>
+                {attachment.name.slice(0, 30)}
+                <span onClick={() => setAttachment(null)} style={{ cursor: "pointer", color: "var(--text-faint)" }}>\u2715</span>
+              </div>
+            )}
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleKeyDown(e); } }}
+              placeholder={
+                showIntro ? PLACEHOLDER_PROMPT : "Ask what happens next... (paste text, drop a URL, or attach a PDF)"
+              }
+              disabled={isLoading}
+              rows={1}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 20,
+                border: "1px solid var(--border)",
+                background: "rgba(30, 22, 16, 0.9)",
+                color: "var(--text)",
+                fontSize: 15,
+                fontFamily: "var(--serif)",
+                outline: "none",
+                transition: "border-color 0.3s ease",
+                WebkitAppearance: "none",
+                resize: "none",
+                overflow: "hidden",
+                lineHeight: "1.4",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "var(--amber-dim)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "var(--border)";
+              }}
+            />
+          </div>
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isLoading}

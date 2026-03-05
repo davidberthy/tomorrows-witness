@@ -1,5 +1,9 @@
 import express from 'express';
 import pg from 'pg';
+import multer from 'multer';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -397,6 +401,58 @@ ${rows.map(r => '<div class="q"><div class="q-text">' + r.question.replace(/</g,
   } catch (err) {
     console.error('Admin error:', err);
     res.status(500).send('Database error');
+  }
+});
+
+// Fetch and extract text from a URL
+app.post('/api/fetch-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'No URL provided' });
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TomorrowsWitness/1.0)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return res.status(400).json({ error: 'Failed to fetch URL' });
+    const html = await resp.text();
+    // Strip HTML tags, scripts, styles — extract readable text
+    let text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Truncate to ~4000 words to fit context
+    const words = text.split(' ');
+    if (words.length > 4000) text = words.slice(0, 4000).join(' ') + '...';
+    res.json({ text, wordCount: words.length });
+  } catch (err) {
+    console.error('URL fetch error:', err);
+    res.status(500).json({ error: 'Failed to extract content' });
+  }
+});
+
+// Extract text from uploaded PDF
+app.post('/api/extract-pdf', upload.single('pdf'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const data = await pdf(req.file.buffer);
+    let text = data.text.replace(/\s+/g, ' ').trim();
+    const words = text.split(' ');
+    if (words.length > 4000) text = words.slice(0, 4000).join(' ') + '...';
+    res.json({ text, wordCount: words.length, pages: data.numpages });
+  } catch (err) {
+    console.error('PDF extract error:', err);
+    res.status(500).json({ error: 'Failed to extract PDF text' });
   }
 });
 
