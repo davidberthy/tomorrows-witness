@@ -913,6 +913,50 @@ export default function TomorrowsWitness() {
   const fileRef = useRef(null);
   const [attachment, setAttachment] = useState(null);
 
+  // Helper: extract first URL from text
+  function extractUrl(text) {
+    const match = text.match(/https?:\/\/[^\s)\]]+/);
+    return match ? match[0] : null;
+  }
+
+  // Helper: fetch article content from URL via server
+  async function fetchUrlContent(url) {
+    try {
+      const resp = await fetch("/api/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.text || null;
+    } catch { return null; }
+  }
+
+  // Helper: extract text from PDF file via server
+  async function extractPdfContent(file) {
+    try {
+      const formData = new FormData();
+      formData.append("pdf", file);
+      const resp = await fetch("/api/extract-pdf", {
+        method: "POST",
+        body: formData,
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.text || null;
+    } catch { return null; }
+  }
+
+  // Helper: handle file selection from hidden input
+  function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (file && file.type === "application/pdf") {
+      setAttachment(file);
+    }
+    e.target.value = "";
+  }
+
   // Load markets + memory on mount
   useEffect(() => {
     async function init() {
@@ -1004,8 +1048,21 @@ export default function TomorrowsWitness() {
     // Log question (fire and forget)
     fetch("/api/log-question", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text.trim() }) }).catch(() => {});
 
-    // PDF/URL extraction disabled until helpers are implemented
+    // Extract content from attachment or URL
     let extraContent = "";
+    if (attachment) {
+      setLoadingStatus("Extracting document...");
+      const pdfText = await extractPdfContent(attachment);
+      if (pdfText) extraContent = "\n\n[ATTACHED DOCUMENT]:\n" + pdfText;
+      setAttachment(null);
+    } else {
+      const url = extractUrl(text.trim());
+      if (url) {
+        setLoadingStatus("Fetching article...");
+        const urlText = await fetchUrlContent(url);
+        if (urlText) extraContent = "\n\n[ARTICLE CONTENT from " + url + "]:\n" + urlText;
+      }
+    }
     setIsLoading(true);
     setLoadingStatus("Establishing temporal link...");
 
@@ -1762,6 +1819,25 @@ export default function TomorrowsWitness() {
                 e.target.style.borderColor = "var(--border)";
               }}
             />
+            <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: 8, paddingTop: 4 }}>
+              <input type="file" ref={fileRef} accept=".pdf" onChange={handleFileSelect} style={{ display: "none" }} />
+              <span
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  fontFamily: "var(--mono)",
+                  fontSize: 9,
+                  letterSpacing: "0.5px",
+                  color: "var(--text-faint)",
+                  cursor: "pointer",
+                  opacity: 0.6,
+                  transition: "opacity 0.2s",
+                }}
+                onMouseEnter={(e) => e.target.style.opacity = "1"}
+                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
+              >
+                ATTACH PDF
+              </span>
+            </div>
           </div>
           <button
             onClick={() => sendMessage(input)}
