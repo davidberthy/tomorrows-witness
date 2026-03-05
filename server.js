@@ -1,7 +1,7 @@
 import express from 'express';
 import pg from 'pg';
 import multer from 'multer';
-import pdf from 'pdf-parse/lib/pdf-parse.js';
+import { createRequire } from 'module'; const require = createRequire(import.meta.url); const pdf = require('pdf-parse');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 import { fileURLToPath } from 'url';
