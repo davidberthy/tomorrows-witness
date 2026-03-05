@@ -184,66 +184,25 @@ async function saveHistory(history) {
 // PREDICTION MARKET FETCHING
 // ==========================================
 
-async function fetchPolymarketData() {
+async function fetchCuratedMarkets() {
   try {
-    const resp = await fetch(
-      "/api/markets/polymarket"
-    );
+    const resp = await fetch("/api/markets/curated");
     if (!resp.ok) return [];
     const data = await resp.json();
-    return (data || [])
-      .slice(0, 8)
-      .map((event) => {
-        const market = event.markets?.[0];
-        const bestAsk = market?.bestAsk
-          ? Math.round(parseFloat(market.bestAsk) * 100)
-          : null;
-        return {
-          source: "Polymarket",
-          title: event.title || market?.question || "Unknown",
-          probability: bestAsk,
-          volume: event.volume24hr
-            ? `$${Math.round(parseFloat(event.volume24hr)).toLocaleString()}`
-            : null,
-          id: event.id,
-        };
-      })
-      .filter((m) => m.title && m.title !== "Unknown");
+    return (data || []).map((m) => ({
+      source: m.source || "Unknown",
+      title: m.title || "Unknown",
+      probability: m.probability,
+      volume: m.volume ? `$${m.volume.toLocaleString()}` : null,
+      id: m.id,
+    }));
   } catch (e) {
-    console.error("Polymarket fetch error:", e);
+    console.error("Curated markets fetch error:", e);
     return [];
   }
 }
 
-async function fetchManifoldData() {
-  try {
-    const resp = await fetch(
-      "/api/markets/kalshi"
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const events = data.events || [];
-    const skipCats = ['Sports', 'Sports & Gaming'];
-    return events
-      .filter(e => !skipCats.includes(e.category))
-      .filter(e => e.markets && e.markets.length > 0)
-      .slice(0, 12)
-      .map((e) => {
-        const m = e.markets[0];
-        return {
-          source: "Kalshi",
-          title: e.title || "Unknown",
-          probability: m.last_price || null,
-          volume: m.volume || 0,
-          id: m.ticker,
-        };
-      })
-      .filter((m) => m.title && m.title !== "Unknown" && m.probability > 0);
-  } catch (e) {
-    console.error("Manifold fetch error:", e);
-    return [];
-  }
-}
+// Kalshi markets now fetched via /api/markets/curated
 
 // ==========================================
 // AI ENGINE — Multi-model + Web Search
@@ -963,13 +922,12 @@ export default function TomorrowsWitness() {
   useEffect(() => {
     async function init() {
       setMarketsLoading(true);
-      const [poly, meta, mem, hist] = await Promise.all([
-        fetchPolymarketData(),
-        fetchManifoldData(),
+      const [curated, mem, hist] = await Promise.all([
+        fetchCuratedMarkets(),
         loadMemory(),
         loadHistory(),
       ]);
-      setMarkets([...poly, ...meta]);
+      setMarkets(curated);
       setMarketsLoading(false);
       setMemory(mem);
       if (mem.summary && mem.topics.length > 0) {
