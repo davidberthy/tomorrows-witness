@@ -445,7 +445,7 @@ app.post('/api/fetch-url', async (req, res) => {
 app.post('/api/extract-pdf', upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   try {
-    const data = await pdf(req.file.buffer);
+    const data = await pdf.PDFParse(req.file.buffer);
     let text = data.text.replace(/\s+/g, ' ').trim();
     const words = text.split(' ');
     if (words.length > 4000) text = words.slice(0, 4000).join(' ') + '...';

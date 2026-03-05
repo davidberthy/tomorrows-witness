@@ -1769,22 +1769,7 @@ export default function TomorrowsWitness() {
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
 
           <div style={{ flex: 1, position: "relative" }}>
-            {attachment && (
-              <div style={{
-                position: "absolute",
-                top: -24,
-                left: 16,
-                fontSize: 11,
-                fontFamily: "var(--mono)",
-                color: "var(--amber-dim)",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}>
-                {attachment.name.slice(0, 30)}
-                <span onClick={() => setAttachment(null)} style={{ cursor: "pointer", color: "var(--text-faint)" }}>\u2715</span>
-              </div>
-            )}
+
             <textarea
               ref={inputRef}
               value={input}
@@ -1819,24 +1804,31 @@ export default function TomorrowsWitness() {
                 e.target.style.borderColor = "var(--border)";
               }}
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: 8, paddingTop: 4 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: 8, paddingTop: 4, gap: 8, alignItems: "center" }}>
               <input type="file" ref={fileRef} accept=".pdf" onChange={handleFileSelect} style={{ display: "none" }} />
-              <span
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 9,
-                  letterSpacing: "0.5px",
-                  color: "var(--text-faint)",
-                  cursor: "pointer",
-                  opacity: 0.6,
-                  transition: "opacity 0.2s",
-                }}
-                onMouseEnter={(e) => e.target.style.opacity = "1"}
-                onMouseLeave={(e) => e.target.style.opacity = "0.6"}
-              >
-                ATTACH PDF
-              </span>
+              {attachment ? (
+                <span style={{ fontFamily: "var(--mono)", fontSize: 9, letterSpacing: "0.5px", color: "var(--amber-dim)", display: "flex", alignItems: "center", gap: 4 }}>
+                  {attachment.name.slice(0, 30)}
+                  <span onClick={() => setAttachment(null)} style={{ cursor: "pointer", color: "var(--text-faint)", fontSize: 11 }}>{String.fromCharCode(10005)}</span>
+                </span>
+              ) : (
+                <span
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    fontFamily: "var(--mono)",
+                    fontSize: 9,
+                    letterSpacing: "0.5px",
+                    color: "var(--text-faint)",
+                    cursor: "pointer",
+                    opacity: 0.5,
+                    transition: "opacity 0.2s",
+                  }}
+                  onMouseEnter={(e) => e.target.style.opacity = "1"}
+                  onMouseLeave={(e) => e.target.style.opacity = "0.5"}
+                >
+                  attach pdf
+                </span>
+              )}
             </div>
           </div>
           <button
