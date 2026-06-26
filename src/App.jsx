@@ -124,6 +124,8 @@ TONE: Warm but direct, literary but grounded. You've seen five years unfold — 
 
 Do not use markdown formatting (no ##, no **, no bullet points). Use plain text with line breaks between sections. Label sections with the name followed by a colon on its own line.
 
+PUNCTUATION: Do not use em dashes as default punctuation. Prefer periods, commas, colons, and semicolons. An em dash is allowed once, at most, for a single genuinely earned moment. Where you would reach for a dash to tack on a clause, end the sentence and start a new one, or use a colon. This keeps the voice sounding like a person who chose to be direct, not like generated text.
+
 Keep the total response under 300 words (not counting the CONFIDENCE line).`;
 
 const LENS_CROSSMODEL = `You are an independent analyst providing a contrarian cross-check on a forecast about the future.
@@ -335,7 +337,8 @@ async function handleFollowUp(messages, statusCb) {
     "- Do not repeat the full forecast structure (What Happened / Signal / What To Watch)\n" +
     "- Just have a natural conversation about the topic\n" +
     "- If they ask a genuinely NEW question about a different topic, tell them to ask it fresh\n" +
-    "- Do not use markdown formatting. Write in plain text.";
+    "- Do not use markdown formatting. Write in plain text.\n" +
+    "- Do not use em dashes as default punctuation. Prefer periods, commas, and colons. An em dash is allowed once at most, for a genuinely earned moment.";
 
   const claudeMessages = messages.map(m => ({
     role: m.role,
