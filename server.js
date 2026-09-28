@@ -833,8 +833,17 @@ function evaluateArm({ fairProbYes, features, config }) {
 // fires, "fair value" is simply the pre-move price (i.e. bet the move reverts).
 function rulesArm({ features, config }) {
   const t = config.rules;
+  // The "moved >= Nx related markets" test is only meaningful when we actually
+  // have a related-market baseline. related_move_points == 0 almost always means
+  // "no related data" (the manual form left it blank → 0, or this was the only
+  // mover in a scan) rather than "related markets provably stayed flat" — and
+  // `move >= N * 0` is trivially true, which would fire the fade on every
+  // qualifying move and defeat the disproportion check that is this arm's whole
+  // point. A frozen mechanical arm must stand down when it can't affirmatively
+  // establish the move was disproportionate, so require a positive baseline.
   const fadeConditions =
     features.move_points >= t.min_move_points &&
+    features.related_move_points > 0 &&
     features.move_points >= t.min_move_multiple_vs_related * features.related_move_points &&
     features.days_to_resolution != null && features.days_to_resolution >= t.min_days_to_resolution &&
     features.yes_ask_cents >= t.min_entry_price_cents &&
@@ -901,9 +910,20 @@ async function callClaudeFairProb(stateString, questionText) {
   });
   if (!resp.ok) throw new Error(`Inference API ${resp.status}`);
   const data = await resp.json();
+  const usage = data.usage || null;
   const text = (data.content || []).map(b => b.type === 'text' ? b.text : '').join('').trim();
   const clean = text.replace(/```json|```/g, '').trim();
-  return { parsed: JSON.parse(clean), usage: data.usage || null };
+  // Parse defensively: the call is already billed by the time we get here, so a
+  // malformed response (Claude wrapping its JSON in prose despite the prompt)
+  // must NOT discard `usage` — otherwise the run's spend cap silently
+  // undercounts real spend and never trips. Surface the parse failure instead.
+  let parsed = null, parseError = null;
+  try {
+    parsed = JSON.parse(clean);
+  } catch (e) {
+    parseError = String(e.message || e);
+  }
+  return { parsed, usage, parseError };
 }
 
 // Estimate the USD cost of a model call from its token usage (for the run's
@@ -997,7 +1017,8 @@ async function runWagerEvaluation(payload, run = null) {
     try {
       const out = await callClaudeFairProb(stateString, question);
       claudeParsed = out.parsed;
-      spentCents += usageToCents(out.usage);
+      spentCents += usageToCents(out.usage); // count spend even if the parse below failed
+      if (!out.parsed) claudeErr = out.parseError || 'unparseable response';
     } catch (e) { claudeErr = String(e.message || e); }
   }
   const claudeProb = claudeParsed?.fair_prob ?? null;
@@ -1020,7 +1041,12 @@ async function runWagerEvaluation(payload, run = null) {
     // Portfolio stop: an arm can't open a trade that would push its total open
     // stake past the run's bankroll. A hard limit a model can't override.
     let traded = a.calc.state === 'candidate' && a.calc.contracts > 0;
-    if (traded) {
+    // The portfolio stop only applies within a real run. Sandbox evaluations
+    // (runId == null) are one-off smoke tests that never settle, so summing
+    // their open stake would grow without bound and eventually (falsely) report
+    // every future sandbox test as "bankroll fully deployed". Quarter-Kelly
+    // already caps a single sandbox trade well below the bankroll.
+    if (traded && runId != null) {
       const open = await openStakeCents(runId, a.arm);
       if (open + a.calc.stakeCents > cfg.bankroll * 100) {
         traded = false;
