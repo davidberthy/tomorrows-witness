@@ -854,6 +854,36 @@ function ScrollToBottom({ onClick, visible }) {
 }
 
 // ==========================================
+// WAGER — small form helpers
+// ==========================================
+
+function FieldLabel({ children }) {
+  return (
+    <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--text-faint)", marginBottom: 5 }}>
+      {children}
+    </div>
+  );
+}
+
+function WagerInput({ value, onChange, placeholder, num, date }) {
+  return (
+    <input
+      type={date ? "date" : num ? "number" : "text"}
+      inputMode={num ? "decimal" : undefined}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width: "100%", padding: "11px 14px", borderRadius: 10, marginBottom: 12,
+        border: "1px solid var(--border)", background: "rgba(30, 22, 16, 0.9)",
+        color: "var(--text)", fontSize: 15, fontFamily: "var(--serif)",
+        outline: "none", WebkitAppearance: "none", boxSizing: "border-box",
+      }}
+    />
+  );
+}
+
+// ==========================================
 // MAIN APP
 // ==========================================
 
@@ -876,6 +906,122 @@ export default function TomorrowsWitness() {
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const [attachment, setAttachment] = useState(null);
+
+  // ---- The Wager (experimental paper-trading tab) ----
+  const [runs, setRuns] = useState([]);
+  const [showNewRun, setShowNewRun] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [newRun, setNewRun] = useState({
+    name: "",
+    entry_window: "1week",
+    bankroll: "10000",
+    arms: { rules: true, jev: true, claude: true },
+    max_ttr_hours: "",
+    spend_cap_usd: "",
+    loss_stop_usd: "",
+  });
+  const [runBusy, setRunBusy] = useState(false);
+  const [wagerForm, setWagerForm] = useState({
+    title: "",
+    resolution_date: "",
+    current_price_cents: "",
+    pre_move_price_cents: "",
+    related_move_points: "",
+  });
+  const [wagerResult, setWagerResult] = useState(null);
+  const [wagerRunning, setWagerRunning] = useState(false);
+  const [wagerError, setWagerError] = useState("");
+  const [wagerHistory, setWagerHistory] = useState([]);
+
+  const activeRun = runs.find((r) => r.status === "active") || null;
+
+  async function loadRuns() {
+    try {
+      const resp = await fetch("/api/wager/runs");
+      if (resp.ok) setRuns(await resp.json());
+    } catch { /* ignore */ }
+  }
+
+  async function loadWagerData() {
+    loadRuns();
+    loadWagerHistory();
+  }
+
+  async function createRun() {
+    setWagerError("");
+    if (!newRun.name.trim()) { setWagerError("Give the run a name."); return; }
+    const chosenArms = Object.keys(newRun.arms).filter((k) => newRun.arms[k]);
+    if (!chosenArms.length) { setWagerError("Include at least one arm."); return; }
+    setRunBusy(true);
+    try {
+      const resp = await fetch("/api/wager/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newRun.name.trim(),
+          entry_window: newRun.entry_window,
+          bankroll: parseFloat(newRun.bankroll) || 10000,
+          arms: chosenArms,
+          max_ttr_hours: newRun.max_ttr_hours ? parseInt(newRun.max_ttr_hours, 10) : null,
+          spend_cap_usd: newRun.spend_cap_usd ? parseFloat(newRun.spend_cap_usd) : null,
+          loss_stop_usd: newRun.loss_stop_usd ? parseFloat(newRun.loss_stop_usd) : null,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setWagerError(data.error || "Could not start run."); }
+      else { setShowNewRun(false); loadRuns(); }
+    } catch { setWagerError("Could not reach the server."); }
+    finally { setRunBusy(false); }
+  }
+
+  async function stopRun(id) {
+    setRunBusy(true);
+    try {
+      await fetch(`/api/wager/runs/${id}/stop`, { method: "POST" });
+      loadRuns();
+    } catch { /* ignore */ }
+    finally { setRunBusy(false); }
+  }
+
+  async function loadWagerHistory() {
+    try {
+      const resp = await fetch("/api/wager/positions");
+      if (resp.ok) setWagerHistory(await resp.json());
+    } catch { /* ignore */ }
+  }
+
+  async function runWager() {
+    setWagerError("");
+    const cur = parseFloat(wagerForm.current_price_cents);
+    if (!wagerForm.title.trim() || isNaN(cur)) {
+      setWagerError("Need at least an event title and a current price (in cents).");
+      return;
+    }
+    setWagerRunning(true);
+    setWagerResult(null);
+    try {
+      const pre = parseFloat(wagerForm.pre_move_price_cents);
+      const rel = parseFloat(wagerForm.related_move_points);
+      const resp = await fetch("/api/wager/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: wagerForm.title.trim(),
+          resolution_date: wagerForm.resolution_date || null,
+          current_price_cents: cur,
+          pre_move_price_cents: isNaN(pre) ? null : pre,
+          related_move_points: isNaN(rel) ? 0 : rel,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setWagerError(data.detail || data.error || "Evaluation failed."); }
+      else { setWagerResult(data); loadWagerHistory(); }
+    } catch (e) {
+      setWagerError("Could not reach the server.");
+    } finally {
+      setWagerRunning(false);
+    }
+  }
 
   // Helper: extract first URL from text
   function extractUrl(text) {
@@ -1415,10 +1561,11 @@ export default function TomorrowsWitness() {
               id: "signals",
               label: `Market Signals${markets.length > 0 ? ` (${markets.length})` : ""}`,
             },
-          ].map((tab) => (
+            { id: "wager", label: "The Wager" },
+          ].map((tab, i, tabs) => (
             <button
               key={tab.id}
-              onClick={() => setView(tab.id)}
+              onClick={() => { setView(tab.id); if (tab.id === "wager") loadWagerData(); }}
               style={{
                 flex: 1,
                 padding: "9px 0",
@@ -1437,7 +1584,7 @@ export default function TomorrowsWitness() {
                 cursor: "pointer",
                 transition: "all 0.25s ease",
                 borderRight:
-                  tab.id === "chat" ? "1px solid var(--border)" : "none",
+                  i < tabs.length - 1 ? "1px solid var(--border)" : "none",
                 position: "relative",
               }}
             >
@@ -1719,7 +1866,231 @@ export default function TomorrowsWitness() {
         </div>
       )}
 
+      {/* ========== WAGER VIEW ========== */}
+      {view === "wager" && (
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "16px 16px 24px",
+            animation: "fadeIn 0.3s ease-out",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div style={{ fontSize: 14, fontStyle: "italic", fontWeight: 300, color: "var(--text-dim)", marginBottom: 6, lineHeight: 1.5 }}>
+            Paper money only. An <b>experiment run</b> is a pre-registered, bounded
+            trial: the machine screens Kalshi and three arms — a mechanical{" "}
+            <b>rules</b> fade, <b>Jev</b>, and <b>Claude</b> — trade the same events
+            on their own. Settings freeze when a run starts.
+          </div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--text-faint)", marginBottom: 16, display: "flex", gap: 16 }}>
+            <a href="/admin/wager" target="_blank" rel="noopener" style={{ color: "var(--amber-dim)", textDecoration: "none", borderBottom: "1px solid var(--border)" }}>Scoreboard →</a>
+            <span onClick={loadWagerData} style={{ cursor: "pointer", color: "var(--amber-dim)", borderBottom: "1px solid var(--border)" }}>Refresh</span>
+          </div>
+
+          {/* Start-a-run control */}
+          {!activeRun && !showNewRun && (
+            <button
+              onClick={() => { setWagerError(""); setShowNewRun(true); }}
+              style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "1px solid var(--amber)", background: "rgba(196, 153, 60, 0.12)", color: "var(--amber)", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}
+            >
+              + Start a run
+            </button>
+          )}
+          {activeRun && (
+            <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--mono)", marginBottom: 4 }}>
+              One run at a time — stop the active run to start another.
+            </div>
+          )}
+
+          {/* New-run form */}
+          {showNewRun && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "14px", marginBottom: 18, background: "rgba(30, 22, 16, 0.5)" }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--amber)", marginBottom: 12 }}>New run — settings freeze on start</div>
+
+              <FieldLabel>Run name</FieldLabel>
+              <WagerInput value={newRun.name} onChange={(v) => setNewRun((p) => ({ ...p, name: v }))} placeholder="e.g. Short-dated smoke test" />
+
+              <FieldLabel>Entry window</FieldLabel>
+              <select
+                value={newRun.entry_window}
+                onChange={(e) => setNewRun((p) => ({ ...p, entry_window: e.target.value }))}
+                style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "rgba(30, 22, 16, 0.9)", color: "var(--text)", fontSize: 15, fontFamily: "var(--serif)", marginBottom: 12, WebkitAppearance: "none", boxSizing: "border-box" }}
+              >
+                <option value="24h">24 hours</option>
+                <option value="1week">1 week</option>
+                <option value="30days">30 days</option>
+                <option value="ongoing">Ongoing</option>
+              </select>
+
+              <FieldLabel>Arms included</FieldLabel>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {["rules", "jev", "claude"].map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => setNewRun((p) => ({ ...p, arms: { ...p.arms, [a]: !p.arms[a] } }))}
+                    style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${newRun.arms[a] ? "var(--amber)" : "var(--border)"}`, background: newRun.arms[a] ? "rgba(196, 153, 60, 0.12)" : "transparent", color: newRun.arms[a] ? "var(--amber)" : "var(--text-faint)", fontFamily: "var(--mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", cursor: "pointer" }}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+
+              <FieldLabel>Bankroll ($, per arm)</FieldLabel>
+              <WagerInput num value={newRun.bankroll} onChange={(v) => setNewRun((p) => ({ ...p, bankroll: v }))} placeholder="10000" />
+
+              <FieldLabel>Max time-to-resolution (hours) — blank = no limit</FieldLabel>
+              <WagerInput num value={newRun.max_ttr_hours} onChange={(v) => setNewRun((p) => ({ ...p, max_ttr_hours: v }))} placeholder="e.g. 48 for a 24h run" />
+
+              <FieldLabel>API spend cap ($) — blank = none</FieldLabel>
+              <WagerInput num value={newRun.spend_cap_usd} onChange={(v) => setNewRun((p) => ({ ...p, spend_cap_usd: v }))} placeholder="e.g. 5" />
+
+              <FieldLabel>Loss stop ($) — blank = none</FieldLabel>
+              <WagerInput num value={newRun.loss_stop_usd} onChange={(v) => setNewRun((p) => ({ ...p, loss_stop_usd: v }))} placeholder="e.g. 2000" />
+
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button onClick={createRun} disabled={runBusy} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid var(--amber)", background: runBusy ? "transparent" : "rgba(196, 153, 60, 0.12)", color: runBusy ? "var(--text-faint)" : "var(--amber)", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: runBusy ? "default" : "pointer" }}>
+                  {runBusy ? "Starting…" : "Start run"}
+                </button>
+                <button onClick={() => setShowNewRun(false)} style={{ padding: "12px 18px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-faint)", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {wagerError && (
+            <div style={{ margin: "10px 0", fontSize: 13, color: "#c46a6a", fontFamily: "var(--mono)" }}>{wagerError}</div>
+          )}
+
+          {/* Runs list — each a report card */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--amber-dim)", marginBottom: 10 }}>Runs</div>
+            {runs.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--text-faint)", fontStyle: "italic" }}>No runs yet. Start one to begin the experiment.</div>
+            )}
+            {runs.map((run) => {
+              const statusColor = run.status === "active" ? "var(--amber)" : run.status === "settling" ? "#c9a86a" : "#6fa86f";
+              const rep = run.report || {};
+              const armKeys = (run.settings?.arms) || ["rules", "jev", "claude"];
+              const noisy = (rep.total_resolved_bets ?? 0) < 20;
+              return (
+                <div key={run.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "14px", marginBottom: 12, background: "rgba(30, 22, 16, 0.5)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontFamily: "var(--serif)", fontSize: 16, color: "var(--text)" }}>{run.name}</span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: statusColor }}>{run.status}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-faint)", fontFamily: "var(--mono)", marginTop: 4 }}>
+                    {run.entry_window} · ${run.bankroll.toLocaleString()} · screened {rep.events_screened ?? 0}
+                    {run.spend_cap_usd != null ? ` · spent $${(run.spent_usd ?? 0).toFixed(2)}/$${run.spend_cap_usd}` : ""}
+                  </div>
+
+                  {/* prominent resolved-bet count / noise caveat */}
+                  <div style={{ fontSize: 11, color: noisy ? "#c9a86a" : "var(--text-faint)", fontFamily: "var(--mono)", marginTop: 8 }}>
+                    {rep.total_resolved_bets ?? 0} resolved bets{noisy ? " — small sample, read as a smoke test, not evidence" : ""}
+                  </div>
+
+                  {/* per-arm metrics */}
+                  <div style={{ marginTop: 10 }}>
+                    {armKeys.map((a) => {
+                      const m = rep.arms?.[a];
+                      if (!m) return null;
+                      return (
+                        <div key={a} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: "var(--mono)", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                          <span style={{ color: "var(--amber)", width: 52 }}>{a}</span>
+                          <span style={{ color: (m.pnl_after_fees || 0) >= 0 ? "#6fa86f" : "#c46a6a", flex: 1, textAlign: "right" }}>{(m.pnl_after_fees || 0) >= 0 ? "+" : ""}${Math.abs(m.pnl_after_fees || 0).toFixed(2)}</span>
+                          <span style={{ color: "var(--text-faint)", flex: 1, textAlign: "right" }}>Brier {m.brier != null ? m.brier : "—"} (n={m.brier_n})</span>
+                          <span style={{ color: "var(--text-faint)", flex: 1, textAlign: "right" }}>{m.resolved_bets}/{m.trades} bets</span>
+                        </div>
+                      );
+                    })}
+                    <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--mono)", marginTop: 6 }}>
+                      market-price baseline Brier {rep.market_baseline_brier != null ? rep.market_baseline_brier : "—"} (n={rep.market_baseline_n ?? 0})
+                    </div>
+                    {rep.disagreements?.length > 0 && (
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--mono)", marginTop: 4 }}>
+                        {rep.disagreements.length} events where arms disagreed
+                      </div>
+                    )}
+                  </div>
+
+                  {run.status === "active" && (
+                    <button onClick={() => stopRun(run.id)} disabled={runBusy} style={{ marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 8, border: "1px solid #5a4a4a", background: "transparent", color: "#c46a6a", fontFamily: "var(--mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", cursor: "pointer" }}>
+                      Stop run (close to new entries)
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Manual event entry — fallback for testing */}
+          <div style={{ marginTop: 22 }}>
+            <div onClick={() => setShowManual((s) => !s)} style={{ fontFamily: "var(--mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.2em", color: "var(--amber-dim)", cursor: "pointer", borderBottom: "1px solid var(--border)", display: "inline-block", paddingBottom: 2 }}>
+              {showManual ? "− Hide manual test" : "+ Manual test (hand-feed one event)"}
+            </div>
+            {showManual && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, color: "var(--text-faint)", fontStyle: "italic", marginBottom: 12 }}>
+                  Feeds one event into the active run (or a sandbox eval if none is active). For testing the arms by hand.
+                </div>
+                {[
+                  { k: "title", label: "Event / market question", ph: "e.g. Will the Fed cut rates in March?" },
+                  { k: "current_price_cents", label: "Current YES price (¢)", ph: "e.g. 68", num: true },
+                  { k: "pre_move_price_cents", label: "Pre-move YES price (¢)", ph: "before the headline — optional", num: true },
+                  { k: "related_move_points", label: "Related markets' move (pts)", ph: "optional — for the fade rule", num: true },
+                  { k: "resolution_date", label: "Resolution date", ph: "YYYY-MM-DD", date: true },
+                ].map((f) => (
+                  <div key={f.k} style={{ marginBottom: 12 }}>
+                    <FieldLabel>{f.label}</FieldLabel>
+                    <WagerInput num={f.num} date={f.date} value={wagerForm[f.k]} onChange={(v) => setWagerForm((p) => ({ ...p, [f.k]: v }))} placeholder={f.ph} />
+                  </div>
+                ))}
+                <button onClick={runWager} disabled={wagerRunning} style={{ width: "100%", padding: "13px 0", borderRadius: 10, border: "1px solid var(--amber)", background: wagerRunning ? "transparent" : "rgba(196, 153, 60, 0.12)", color: wagerRunning ? "var(--text-faint)" : "var(--amber)", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: wagerRunning ? "default" : "pointer" }}>
+                  {wagerRunning ? "Consulting the arms…" : "Run the arms"}
+                </button>
+
+                {wagerResult && (
+                  <div style={{ marginTop: 18 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)", fontFamily: "var(--mono)", marginBottom: 10 }}>
+                      move {wagerResult.features.move_points}pt · {wagerResult.features.days_to_resolution ?? "?"}d left · entry {wagerResult.features.yes_ask_cents}¢
+                      {wagerResult.run ? ` · run: ${wagerResult.run.name}` : " · sandbox (no active run)"}
+                    </div>
+                    {wagerResult.arms.map((a) => {
+                      const traded = a.state === "candidate" && a.contracts > 0;
+                      const stateColor = a.state === "candidate" ? "var(--amber)" : a.state === "investigate" ? "#c9a86a" : "var(--text-faint)";
+                      return (
+                        <div key={a.arm} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 10, background: "rgba(30, 22, 16, 0.5)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                            <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--amber)", letterSpacing: "0.08em" }}>{a.arm}</span>
+                            <span style={{ fontFamily: "var(--mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: stateColor }}>{a.state.replace("_", " ")}</span>
+                          </div>
+                          <div style={{ fontSize: 13, color: "var(--text)", marginTop: 6, fontFamily: "var(--mono)" }}>
+                            {a.fair_prob != null ? `fair ${Math.round(a.fair_prob * 100)}%` : "no probability"}
+                            {a.edge != null && <span style={{ color: "var(--text-faint)" }}>{`  ·  edge ${(a.edge * 100).toFixed(1)}pt`}</span>}
+                          </div>
+                          {traded ? (
+                            <div style={{ fontSize: 13, color: "var(--amber-dim)", marginTop: 4, fontFamily: "var(--mono)" }}>
+                              {`BUY ${a.side.toUpperCase()} · ${a.contracts} @ ${a.costCents}¢ · stake $${(a.stakeCents / 100).toFixed(2)} · fee $${(a.feesCents / 100).toFixed(2)}`}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 4, fontFamily: "var(--mono)" }}>
+                              no position{a.reason ? ` — ${a.reason}` : ""}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Input bar */}
+      {view !== "wager" && (
       <div
         style={{
           flexShrink: 0,
@@ -1840,6 +2211,7 @@ export default function TomorrowsWitness() {
             : ""}
         </div>
       </div>
+      )}
       {showAbout && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           <div onClick={() => setShowAbout(false)} style={{ position: "absolute", inset: 0, background: "rgba(10,8,6,0.7)", backdropFilter: "blur(4px)", animation: "fadeIn 0.3s ease-out" }} />
