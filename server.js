@@ -847,17 +847,17 @@ function evaluateArm({ fairProbYes, features, config }) {
 // fires, "fair value" is simply the pre-move price (i.e. bet the move reverts).
 function rulesArm({ features, config }) {
   const t = config.rules;
-  // The "moved >= Nx related markets" test is only meaningful when we actually
-  // have a related-market baseline. related_move_points == 0 almost always means
-  // "no related data" (the manual form left it blank → 0, or this was the only
-  // mover in a scan) rather than "related markets provably stayed flat" — and
-  // `move >= N * 0` is trivially true, which would fire the fade on every
-  // qualifying move and defeat the disproportion check that is this arm's whole
-  // point. A frozen mechanical arm must stand down when it can't affirmatively
-  // establish the move was disproportionate, so require a positive baseline.
+  // The "moved >= Nx related markets" test needs a related-market baseline.
+  // related_move_points is now null when we genuinely have no peer data (no
+  // sibling or same-category markets this scan, or a manual form left it blank)
+  // and a real number — including 0 — when peers were observed. 0 means "peers
+  // provably stayed flat," which is the strongest disproportion signal, so we
+  // must fade on it, not stand down: `move >= N * 0` is trivially true and that
+  // is correct. We only stand down when the baseline is null (unknown), since a
+  // frozen mechanical arm can't establish disproportion without peer data.
   const fadeConditions =
     features.move_points >= t.min_move_points &&
-    features.related_move_points > 0 &&
+    features.related_move_points != null &&
     features.move_points >= t.min_move_multiple_vs_related * features.related_move_points &&
     features.days_to_resolution != null && features.days_to_resolution >= t.min_days_to_resolution &&
     features.yes_ask_cents >= t.min_entry_price_cents &&
@@ -877,7 +877,7 @@ function buildWagerState(event, features) {
     event.description ? `Details: ${event.description}` : '',
     `Resolution date: ${event.resolution_date || 'unspecified'} (${features.days_to_resolution ?? '?'} days away).`,
     `Recent move: this market moved about ${features.move_points} points over the recent window.`,
-    `Related markets moved about ${features.related_move_points} points over the same window.`,
+    features.related_move_points != null ? `Related markets moved about ${features.related_move_points} points over the same window.` : '',
     `NOTE: the current market price is intentionally NOT provided. Estimate the true probability of a YES resolution from the underlying situation only — do not try to infer or echo a market price.`,
   ].filter(Boolean).join('\n');
 }
@@ -982,7 +982,7 @@ async function runWagerEvaluation(payload, run = null) {
     title, description = '',
     resolution_date = null, days_to_resolution = null,
     pre_move_price_cents = null, current_price_cents = null,
-    move_points = null, related_move_points = 0,
+    move_points = null, related_move_points = null,
   } = payload || {};
 
   if (!title || current_price_cents == null) {
@@ -1001,7 +1001,7 @@ async function runWagerEvaluation(payload, run = null) {
     pre_move_price_cents: pre,
     days_to_resolution: days_to_resolution != null ? Number(days_to_resolution) : daysBetween(resolution_date),
     move_points: move_points != null ? Math.abs(Math.round(move_points)) : Math.abs(cur - pre),
-    related_move_points: Math.abs(Math.round(related_move_points)),
+    related_move_points: related_move_points != null ? Math.abs(Math.round(related_move_points)) : null,
   };
 
   // The SAME shared state (including the neutral cause description) goes to
@@ -1331,6 +1331,7 @@ app.post('/api/wager/scan', async (req, res) => {
         markets.push({
           ticker: m.ticker,
           event_ticker: e.event_ticker || m.event_ticker || e.ticker,
+          category: e.category || null,
           title: `${e.title || m.title || ''}${sub ? ' — ' + sub : ''}`.trim(),
           price: Math.round(m.last_price),
           close_time: m.close_time || e.close_time || null,
@@ -1346,8 +1347,11 @@ app.post('/api/wager/scan', async (req, res) => {
       );
     }
 
-    // Measure each market's move vs. its price ~1 hour ago.
-    const movers = [];
+    // Measure EVERY market's move vs. its price ~1 hour ago. We compute a move
+    // for all markets, not just the ones that cross the detection threshold, so
+    // the related-market baseline below reflects markets that stayed flat too —
+    // not just the handful that jumped this scan.
+    const scanned = [];
     for (const m of markets) {
       const old = await pool.query(
         `SELECT price_cents FROM wager_price_snapshots WHERE market_ticker = $1 AND ts <= NOW() - INTERVAL '45 minutes' ORDER BY ts DESC LIMIT 1`,
@@ -1356,19 +1360,32 @@ app.post('/api/wager/scan', async (req, res) => {
       if (!old.rows.length) continue; // no hour-ago baseline yet (early runs)
       const oldPrice = old.rows[0].price_cents;
       const move = Math.abs(m.price - oldPrice);
-      if (move >= detect.min_move_points) {
-        movers.push({ ...m, oldPrice, move, dir: m.price >= oldPrice ? 'rose' : 'fell' });
-      }
+      scanned.push({ ...m, oldPrice, move, dir: m.price >= oldPrice ? 'rose' : 'fell' });
     }
+    const movers = scanned.filter(m => m.move >= detect.min_move_points);
 
-    // Related-market move = median move of sibling markets in the same event
-    // (fallback: the median move across all movers this run).
+    // Related-market move: did markets *related* to a mover also move, or was the
+    // move idiosyncratic? Scope, tightest first:
+    //   1. sibling markets in the same event (e.g. other strikes of one contract),
+    //   2. else all scanned markets in the same category,
+    //   3. else null — no peer data, so disproportion can't be judged.
+    // The median is taken over ALL scanned peers (flat ones included), so a lone
+    // jump whose peers held still yields related = 0 ("provably flat") — which is
+    // a distinct, fade-worthy signal, NOT the same as null ("we don't know").
     const byEvent = {};
-    for (const mv of movers) (byEvent[mv.event_ticker] ||= []).push(mv);
-    const globalMedianMove = median(movers.map(x => x.move));
+    const byCategory = {};
+    for (const m of scanned) {
+      (byEvent[m.event_ticker] ||= []).push(m);
+      if (m.category) (byCategory[m.category] ||= []).push(m);
+    }
     for (const mv of movers) {
       const siblings = (byEvent[mv.event_ticker] || []).filter(s2 => s2.ticker !== mv.ticker);
-      mv.related = siblings.length ? median(siblings.map(s2 => s2.move)) : globalMedianMove;
+      if (siblings.length) {
+        mv.related = median(siblings.map(s2 => s2.move));
+      } else {
+        const peers = (byCategory[mv.category] || []).filter(s2 => s2.ticker !== mv.ticker);
+        mv.related = peers.length ? median(peers.map(s2 => s2.move)) : null;
+      }
     }
 
     // Entering new positions happens ONLY while a run is active.
