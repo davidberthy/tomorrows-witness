@@ -886,10 +886,20 @@ function buildWagerState(event, features) {
 async function callJev(stateString, questionId, questionText) {
   const key = process.env.TYPESAFE_API_KEY;
   if (!key) throw new Error('TYPESAFE_API_KEY not configured');
+  // A 'noul' question MUST carry `criteria` or `instructions`, or the API
+  // rejects the request with 400 ("Noul question must have criteria or
+  // instructions"). The instructions mirror the price-withheld discipline used
+  // for the Claude arm so both judges are asked the same thing.
   const body = {
     model: 'jev-latest',
     state: stateString,
-    questions: { [questionId]: { type: 'noul', question: questionText } },
+    questions: {
+      [questionId]: {
+        type: 'noul',
+        question: questionText,
+        instructions: 'Estimate the true probability, between 0 and 1, that this event resolves YES based only on the underlying situation described in the state. You are NOT given the current market price — do not infer, guess, or echo one.',
+      },
+    },
   };
   for (let attempt = 0; attempt < 4; attempt++) {
     const resp = await fetch('https://api.typesafe.ai/v1/systemone', {
