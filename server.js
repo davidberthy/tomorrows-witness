@@ -117,124 +117,138 @@ function kalshiFeeCents(priceCents, contracts) {
   return Math.ceil(0.07 * contracts * p * (1 - p) * 100);
 }
 
-// wager_events — one snapshot of a market at the moment we decided.
-// instrument_type carries 'kalshi' now, leaves room for 'equity' later.
-// wager_runs — a named, bounded, pre-registered experiment. Its settings are
-// frozen at creation; lifecycle goes active → settling → complete.
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_runs (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    status TEXT DEFAULT 'active',
-    entry_window TEXT DEFAULT 'ongoing',
-    entry_deadline TIMESTAMPTZ,
-    bankroll_cents INT DEFAULT 1000000,
-    max_ttr_hours INT,
-    spend_cap_cents INT,
-    spent_cents INT DEFAULT 0,
-    loss_stop_cents INT,
-    settings JSONB,
-    report JSONB,
-    started_at TIMESTAMPTZ DEFAULT NOW(),
-    ended_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  )
-`).then(() => console.log('wager_runs table ready'))
-  .catch(err => console.error('wager_runs DB init error:', err));
+// Create the wager_* tables in foreign-key dependency order. These MUST run
+// sequentially, not as independent parallel pool.query() chains: wager_events
+// references wager_runs, and wager_judgments/positions/journal reference
+// wager_events. Fired in parallel they race on a FRESH database — a child table
+// can be created before its parent exists and fail with "relation does not
+// exist". That's invisible on an already-migrated DB (CREATE IF NOT EXISTS is a
+// no-op), so it only bites the very first deploy to a new environment.
+(async () => {
+  try {
+    // wager_runs — a named, bounded, pre-registered experiment. Its settings are
+    // frozen at creation; lifecycle goes active → settling → complete.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_runs (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        entry_window TEXT DEFAULT 'ongoing',
+        entry_deadline TIMESTAMPTZ,
+        bankroll_cents INT DEFAULT 1000000,
+        max_ttr_hours INT,
+        spend_cap_cents INT,
+        spent_cents INT DEFAULT 0,
+        loss_stop_cents INT,
+        settings JSONB,
+        report JSONB,
+        started_at TIMESTAMPTZ DEFAULT NOW(),
+        ended_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('wager_runs table ready');
 
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_events (
-    id SERIAL PRIMARY KEY,
-    run_id INT REFERENCES wager_runs(id),
-    external_id TEXT,
-    source TEXT DEFAULT 'manual',
-    instrument_type TEXT DEFAULT 'kalshi',
-    title TEXT NOT NULL,
-    description TEXT,
-    resolution_date DATE,
-    pre_move_price_cents INT,
-    current_price_cents INT,
-    move_points INT,
-    related_move_points INT,
-    days_to_resolution INT,
-    features JSONB,
-    resolved BOOLEAN DEFAULT FALSE,
-    outcome BOOLEAN,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    resolved_at TIMESTAMPTZ
-  )
-`).then(() => console.log('wager_events table ready'))
-  .catch(err => console.error('wager_events DB init error:', err));
+    // wager_events — one snapshot of a market at the moment we decided.
+    // instrument_type carries 'kalshi' now, leaves room for 'equity' later.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_events (
+        id SERIAL PRIMARY KEY,
+        run_id INT REFERENCES wager_runs(id),
+        external_id TEXT,
+        source TEXT DEFAULT 'manual',
+        instrument_type TEXT DEFAULT 'kalshi',
+        title TEXT NOT NULL,
+        description TEXT,
+        resolution_date DATE,
+        pre_move_price_cents INT,
+        current_price_cents INT,
+        move_points INT,
+        related_move_points INT,
+        days_to_resolution INT,
+        features JSONB,
+        resolved BOOLEAN DEFAULT FALSE,
+        outcome BOOLEAN,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ
+      )
+    `);
+    console.log('wager_events table ready');
 
-// wager_judgments — the raw judgment each arm produced for an event (stored
-// verbatim so we can audit what Jev/Claude actually said).
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_judgments (
-    id SERIAL PRIMARY KEY,
-    event_id INT REFERENCES wager_events(id),
-    arm TEXT NOT NULL,
-    question_id TEXT,
-    judgment_type TEXT,
-    raw_response JSONB,
-    fair_prob NUMERIC,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  )
-`).then(() => console.log('wager_judgments table ready'))
-  .catch(err => console.error('wager_judgments DB init error:', err));
+    // wager_judgments — the raw judgment each arm produced for an event (stored
+    // verbatim so we can audit what Jev/Claude actually said).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_judgments (
+        id SERIAL PRIMARY KEY,
+        event_id INT REFERENCES wager_events(id),
+        arm TEXT NOT NULL,
+        question_id TEXT,
+        judgment_type TEXT,
+        raw_response JSONB,
+        fair_prob NUMERIC,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('wager_judgments table ready');
 
-// wager_positions — the decision + (if traded) the paper position for each arm.
-// A no-trade decision is recorded too (contracts = 0) so every arm is on record.
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_positions (
-    id SERIAL PRIMARY KEY,
-    event_id INT REFERENCES wager_events(id),
-    run_id INT REFERENCES wager_runs(id),
-    arm TEXT NOT NULL,
-    decision_state TEXT,
-    side TEXT,
-    entry_price_cents INT,
-    contracts INT DEFAULT 0,
-    stake_cents INT DEFAULT 0,
-    fees_cents INT DEFAULT 0,
-    fair_prob NUMERIC,
-    edge NUMERIC,
-    kelly_fraction_used NUMERIC,
-    thresholds JSONB,
-    settled BOOLEAN DEFAULT FALSE,
-    pnl_cents INT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    settled_at TIMESTAMPTZ
-  )
-`).then(() => console.log('wager_positions table ready'))
-  .catch(err => console.error('wager_positions DB init error:', err));
+    // wager_positions — the decision + (if traded) the paper position for each arm.
+    // A no-trade decision is recorded too (contracts = 0) so every arm is on record.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_positions (
+        id SERIAL PRIMARY KEY,
+        event_id INT REFERENCES wager_events(id),
+        run_id INT REFERENCES wager_runs(id),
+        arm TEXT NOT NULL,
+        decision_state TEXT,
+        side TEXT,
+        entry_price_cents INT,
+        contracts INT DEFAULT 0,
+        stake_cents INT DEFAULT 0,
+        fees_cents INT DEFAULT 0,
+        fair_prob NUMERIC,
+        edge NUMERIC,
+        kelly_fraction_used NUMERIC,
+        thresholds JSONB,
+        settled BOOLEAN DEFAULT FALSE,
+        pnl_cents INT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        settled_at TIMESTAMPTZ
+      )
+    `);
+    console.log('wager_positions table ready');
 
-// wager_journal — an append-only snapshot of exactly what was sent to each
-// arm and what came back, for full reproducibility.
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_journal (
-    id SERIAL PRIMARY KEY,
-    event_id INT REFERENCES wager_events(id),
-    arm TEXT NOT NULL,
-    snapshot JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  )
-`).then(() => console.log('wager_journal table ready'))
-  .catch(err => console.error('wager_journal DB init error:', err));
+    // wager_journal — an append-only snapshot of exactly what was sent to each
+    // arm and what came back, for full reproducibility.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_journal (
+        id SERIAL PRIMARY KEY,
+        event_id INT REFERENCES wager_events(id),
+        arm TEXT NOT NULL,
+        snapshot JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('wager_journal table ready');
 
-// wager_price_snapshots — the scanner records the price of each Kalshi market
-// on every run so it can measure a market's move over the last hour.
-pool.query(`
-  CREATE TABLE IF NOT EXISTS wager_price_snapshots (
-    id SERIAL PRIMARY KEY,
-    market_ticker TEXT NOT NULL,
-    title TEXT,
-    price_cents INT,
-    close_time TIMESTAMPTZ,
-    ts TIMESTAMPTZ DEFAULT NOW()
-  )
-`).then(() => pool.query(`CREATE INDEX IF NOT EXISTS idx_wps_ticker_ts ON wager_price_snapshots (market_ticker, ts DESC)`))
-  .then(() => console.log('wager_price_snapshots table ready'))
-  .catch(err => console.error('wager_price_snapshots DB init error:', err));
+    // wager_price_snapshots — the scanner records the price of each Kalshi market
+    // on every run so it can measure a market's move over the last hour. (No FK;
+    // ordered last only for a tidy, deterministic init log.)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wager_price_snapshots (
+        id SERIAL PRIMARY KEY,
+        market_ticker TEXT NOT NULL,
+        title TEXT,
+        price_cents INT,
+        close_time TIMESTAMPTZ,
+        ts TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_wps_ticker_ts ON wager_price_snapshots (market_ticker, ts DESC)`);
+    console.log('wager_price_snapshots table ready');
+  } catch (err) {
+    console.error('wager_* DB init error:', err);
+  }
+})();
 
 
 // Serve static files from the built app
