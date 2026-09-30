@@ -1090,13 +1090,22 @@ async function runWagerEvaluation(payload, run = null) {
     );
   }
 
+  // One-sentence "why" per arm, so callers (e.g. the quick-read UI) can show the
+  // reasoning, not just the number. Rules explains its mechanical decision; the
+  // model arms surface their own rationale text.
+  const rationaleFor = {
+    rules: rules.reason || (rules.fairProbYes != null ? 'thresholds met' : null),
+    jev: jevErr ? `error: ${jevErr}` : (jevRaw?.answers?.resolve_yes?.rationale ?? jevRaw?.rationale ?? null),
+    claude: claudeErr ? `error: ${claudeErr}` : (claudeParsed?.rationale ?? null),
+  };
+
   return {
     event_id: eventId,
     run_id: runId,
     features,
     spent_cents: spentCents,
     config: { bankroll: cfg.bankroll, kellyFraction: cfg.kellyFraction, thresholds: cfg.rules },
-    arms: arms.map(a => ({ arm: a.arm, fair_prob: a.fairProb, ...a.calc })),
+    arms: arms.map(a => ({ arm: a.arm, fair_prob: a.fairProb, rationale: rationaleFor[a.arm] ?? null, ...a.calc })),
   };
 }
 
@@ -1120,6 +1129,150 @@ app.post('/api/wager/evaluate', async (req, res) => {
   } catch (err) {
     console.error('Wager evaluate error:', err);
     res.status(500).json({ error: 'Evaluation failed', detail: String(err.message || err) });
+  }
+});
+
+// Flatten one Kalshi market (optionally with its parent event) into the shape
+// runWagerEvaluation wants. Prices come as decimal-dollar strings ("0.0900").
+function kalshiMarketToCandidate(event, m) {
+  const rawD = m.last_price_dollars != null ? m.last_price_dollars : m.yes_ask_dollars;
+  const cents = Math.round(Number(rawD) * 100);
+  const sub = m.yes_sub_title || m.subtitle || '';
+  const base = event?.title || m.title || '';
+  return {
+    ticker: m.ticker,
+    title: `${base}${sub ? ' — ' + sub : ''}`.trim(),
+    current_price_cents: Number.isFinite(cents) ? cents : null,
+    resolution_date: m.close_time || event?.close_time || null,
+    category: event?.category || null,
+  };
+}
+
+// Resolve a free-text input — a Kalshi market URL, a bare ticker, or a plain
+// question — to a single live market with its current price and resolution
+// date. This is what lets the UI ask for just one thing instead of ten fields.
+async function resolveKalshiMarket(input) {
+  const q = (input || '').trim();
+  if (!q) return { error: 'Enter a market URL, ticker, or question.' };
+
+  // 1) A bare ticker like "KXELONMARS-99" → fetch that market directly.
+  const tickerMatch = q.toUpperCase().match(/\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\b/);
+  if (tickerMatch && !q.includes(' ')) {
+    try {
+      const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${encodeURIComponent(tickerMatch[0])}`);
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.market) {
+          const c = kalshiMarketToCandidate(null, d.market);
+          if (c.current_price_cents) return { market: { ...c, matched_by: 'ticker' }, alternatives: [] };
+        }
+      }
+    } catch { /* fall through to search */ }
+  }
+
+  // 2) Otherwise search the open markets. One page is ~900 markets; Kalshi has
+  //    ~9k open, so paginate a few pages via the cursor to get real coverage.
+  const cands = [];
+  let cursor = '';
+  for (let page = 0; page < 6; page++) {
+    const url = `https://api.elections.kalshi.com/trade-api/v2/events?limit=200&status=open&with_nested_markets=true${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const resp = await fetch(url);
+    if (!resp.ok) { if (page === 0) return { error: 'Could not reach Kalshi to search markets.' }; break; }
+    const data = await resp.json();
+    for (const e of (data.events || [])) {
+      for (const m of (e.markets || [])) {
+        const st = m.status;
+        if (st && st !== 'active' && st !== 'open') continue;
+        const c = kalshiMarketToCandidate(e, m);
+        if (c.current_price_cents && c.current_price_cents > 0) cands.push(c);
+      }
+    }
+    cursor = data.cursor || '';
+    if (!cursor) break;
+  }
+  if (!cands.length) return { error: 'No open Kalshi markets available right now.' };
+
+  // Keyword prefilter: rank by IDF-weighted token overlap so a rare, meaningful
+  // word ("bitcoin") outweighs a common one ("year") that hundreds of unrelated
+  // markets also carry. Raw overlap counts let common words dominate the list.
+  const stop = new Set(['will','the','a','an','of','to','in','on','by','be','is','are','and','or','for','this','that','with','next','who','what','when','which','it','at','from','year','years','end','than','more','less','2025','2026','2027']);
+  const toks = s => new Set((s || '').toLowerCase().replace(/https?:\/\/\S*kalshi\.com/gi, ' ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter(t => t.length > 2 && !stop.has(t)));
+  const qToks = [...toks(q)];
+  const candToks = cands.map(c => toks(c.title));
+  const df = Object.fromEntries(qToks.map(t => [t, 0]));
+  for (const ct of candToks) for (const t of qToks) if (ct.has(t)) df[t]++;
+  const N = cands.length;
+  const weight = t => Math.log((N + 1) / (df[t] + 1)); // rare token → high weight
+  const scored = cands.map((c, i) => {
+    let score = 0;
+    for (const t of qToks) if (candToks[i].has(t)) score += weight(t);
+    return { c, score };
+  }).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+  const noMatch = { error: 'No open Kalshi market clearly matches that. Try a ticker, or rephrase toward a specific, dated question.', alternatives: [] };
+  if (!scored.length) return noMatch;
+  const shortlist = scored.slice(0, 40).map(s => s.c);
+
+  // Let the model pick the single best match — or say none of them fit, which we
+  // trust rather than forcing a shaky keyword guess. Keyword fallback is only
+  // for when there's no model available at all.
+  const apiKey = process.env.INFERENCE_KEY;
+  if (apiKey) {
+    try {
+      const numbered = shortlist.map((c, i) => `${i}. ${c.title} (${c.current_price_cents}¢)`).join('\n');
+      const r = await fetch('https://us.inference.heroku.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: WAGER_MODEL,
+          max_tokens: 60,
+          system: 'You match a user request to a prediction market. Given a request and a numbered list of markets, reply with ONLY a JSON object {"index": <number>} for the single best match, or {"index": null} if none is a genuinely good match (do not force a match). No other text.',
+          messages: [{ role: 'user', content: `Request: "${q}"\n\nMarkets:\n${numbered}` }],
+        }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const text = (d.content || []).map(b => b.type === 'text' ? b.text : '').join('');
+        const idx = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{}').index;
+        if (Number.isInteger(idx) && shortlist[idx]) {
+          const picked = shortlist[idx];
+          return {
+            market: { ...picked, matched_by: 'question' },
+            alternatives: shortlist.filter((_, i) => i !== idx).slice(0, 4),
+          };
+        }
+        // Model saw the shortlist and declined — surface the near-misses, don't guess.
+        return { ...noMatch, alternatives: shortlist.slice(0, 5) };
+      }
+    } catch { /* fall back to keyword below */ }
+  }
+  // No model (or the call errored): best-effort top keyword match, flagged as such.
+  return {
+    market: { ...shortlist[0], matched_by: 'keyword' },
+    alternatives: shortlist.slice(1, 5),
+  };
+}
+
+// Quick read: one input (URL / ticker / question) → resolved market → the three
+// arms. The full manual path (/api/wager/evaluate) stays for going deeper.
+app.post('/api/wager/quick', async (req, res) => {
+  try {
+    const resolved = await resolveKalshiMarket((req.body || {}).input);
+    if (resolved.error) return res.status(404).json({ error: resolved.error, alternatives: resolved.alternatives || [] });
+    const run = await getActiveRun();
+    const result = await runWagerEvaluation({
+      external_id: resolved.market.ticker,
+      source: 'quick',
+      title: resolved.market.title,
+      current_price_cents: resolved.market.current_price_cents,
+      resolution_date: resolved.market.resolution_date,
+    }, run);
+    if (run && result.spent_cents) {
+      await pool.query(`UPDATE wager_runs SET spent_cents = spent_cents + $1 WHERE id = $2`, [result.spent_cents, run.id]);
+    }
+    res.json({ ...result, market: resolved.market, alternatives: resolved.alternatives || [], run: run ? { id: run.id, name: run.name } : null });
+  } catch (err) {
+    console.error('Wager quick error:', err);
+    res.status(500).json({ error: 'Quick read failed', detail: String(err.message || err) });
   }
 });
 
@@ -1682,11 +1835,110 @@ app.get('/admin/wager', async (req, res) => {
 </style>
 <script>
 async function resolveW(id, outcome){ await fetch('/api/wager/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event_id:id,outcome})}); location.reload(); }
+var esc = function(s){ return (s==null?'':String(s)).replace(/</g,'&lt;'); };
+function pct(x){ return x==null ? '—' : (x*100).toFixed(0)+'%'; }
+function sideBadge(side){
+  if(side==='yes') return '<span style="color:#6fa86f;font-weight:bold">YES</span>';
+  if(side==='no') return '<span style="color:#c46a6a;font-weight:bold">NO</span>';
+  return '<span style="color:rgba(230,215,190,0.4)">pass</span>';
+}
+function altLinks(alts){
+  if(!alts || !alts.length) return '';
+  return '<div class="meta" style="margin-top:8px">Closest open markets — click to read one:</div><div style="margin-top:4px">'+
+    alts.map(function(c){ return '<a href="#" onclick="quickReadTicker(\''+esc(c.ticker)+'\');return false" style="display:block;color:#d4a84a;padding:2px 0">'+esc((c.title||'').slice(0,64))+(c.current_price_cents!=null?' ('+c.current_price_cents+'¢)':'')+'</a>'; }).join('')+'</div>';
+}
+function renderResult(d){
+  var box = document.getElementById('qresult');
+  if(d.error){ box.innerHTML = '<div style="color:#c46a6a">'+esc(d.error)+'</div>' + altLinks(d.alternatives); return; }
+  var m = d.market, f = d.features || {};
+  var head = '';
+  if(m){
+    var when = m.resolution_date ? new Date(m.resolution_date).toLocaleDateString() : 'unknown date';
+    head = '<div style="font-size:14px;color:#e6d7be;margin-bottom:4px">'+esc(m.title)+'</div>'+
+      '<div class="meta">Market price '+f.yes_ask_cents+'¢ · resolves '+when+' · '+f.days_to_resolution+'d out · matched by '+esc(m.matched_by)+' ('+esc(m.ticker)+')</div>';
+  }
+  // Consensus across arms that took a side.
+  var sides = (d.arms||[]).filter(function(a){return a.side==='yes'||a.side==='no';});
+  var consensus = '';
+  if(sides.length){
+    var allNo = sides.every(function(a){return a.side==='no';});
+    var allYes = sides.every(function(a){return a.side==='yes';});
+    if(allYes) consensus = '<div style="margin:8px 0;color:#6fa86f">All arms lean YES — the market looks too low.</div>';
+    else if(allNo) consensus = '<div style="margin:8px 0;color:#c46a6a">All arms lean NO — the market looks too high.</div>';
+    else consensus = '<div style="margin:8px 0;color:#d4a84a">Arms disagree on direction — no consensus.</div>';
+  } else {
+    consensus = '<div style="margin:8px 0;color:rgba(230,215,190,0.5)">No arm sees enough edge to bet.</div>';
+  }
+  var rows = (d.arms||[]).map(function(a){
+    var edge = a.edge==null ? '—' : (a.edge>=0?'+':'')+(a.edge*100).toFixed(0)+'%';
+    return '<tr><td>'+a.arm+'</td><td>'+pct(a.fair_prob)+'</td><td>'+sideBadge(a.side)+'</td><td>'+edge+'</td>'+
+      '<td style="font-size:11px;color:rgba(230,215,190,0.7);max-width:360px;word-wrap:break-word">'+esc(a.rationale||a.reason||'')+'</td></tr>';
+  }).join('');
+  var foot = d.run ? '<div class="meta" style="margin-top:8px">Active run: '+esc(d.run.name)+' — candidate positions were recorded.</div>'
+                   : '<div class="meta" style="margin-top:8px">Sandbox read — no active run, so no position was opened.</div>';
+  var alts = '';
+  if(d.alternatives && d.alternatives.length){
+    alts = '<div class="meta" style="margin-top:8px">Not it? '+d.alternatives.map(function(c){
+      return '<a href="#" onclick="quickReadTicker(\''+esc(c.ticker)+'\');return false" style="color:#d4a84a;margin-right:10px">'+esc((c.title||'').slice(0,48))+'</a>';
+    }).join('')+'</div>';
+  }
+  box.innerHTML = head + consensus +
+    '<table><tr><th>Arm</th><th>Fair P(YES)</th><th>Bet</th><th>Edge</th><th>Reasoning</th></tr>'+rows+'</table>' + foot + alts;
+}
+async function quickRead(){
+  var input = document.getElementById('qinput').value.trim();
+  if(!input) return;
+  document.getElementById('qresult').innerHTML = '<div class="meta">Reading…</div>';
+  try{
+    var r = await fetch('/api/wager/quick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:input})});
+    renderResult(await r.json());
+  }catch(e){ document.getElementById('qresult').innerHTML = '<div style="color:#c46a6a">Request failed.</div>'; }
+}
+function quickReadTicker(t){ document.getElementById('qinput').value = t; quickRead(); }
+async function evalAdvanced(){
+  var body = {
+    title: document.getElementById('a_title').value.trim(),
+    current_price_cents: Number(document.getElementById('a_price').value),
+    resolution_date: document.getElementById('a_resdate').value || null,
+    description: document.getElementById('a_desc').value.trim(),
+  };
+  var pm = document.getElementById('a_premove').value; if(pm!=='') body.pre_move_price_cents = Number(pm);
+  var rel = document.getElementById('a_related').value; if(rel!=='') body.related_move_points = Number(rel);
+  if(!body.title || !body.current_price_cents){ document.getElementById('qresult').innerHTML='<div style="color:#c46a6a">Question and current price are required.</div>'; return; }
+  document.getElementById('qresult').innerHTML = '<div class="meta">Evaluating…</div>';
+  try{
+    var r = await fetch('/api/wager/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d = await r.json();
+    if(!d.market) d.market = { title: body.title, ticker: 'manual', matched_by: 'manual', resolution_date: body.resolution_date };
+    renderResult(d);
+  }catch(e){ document.getElementById('qresult').innerHTML = '<div style="color:#c46a6a">Request failed.</div>'; }
+}
 </script>
 </head><body>
 <h1>The Wager — Scoreboard</h1>
 <div class="meta">Paper money only · ${WAGER.version} · $${WAGER.bankroll.toLocaleString()} bankroll · quarter-Kelly · thresholds frozen: move≥${WAGER.rules.min_move_points}, ≥${WAGER.rules.min_move_multiple_vs_related}× related, ≥${WAGER.rules.min_days_to_resolution}d, ${WAGER.rules.min_entry_price_cents}–${WAGER.rules.max_entry_price_cents}¢</div>
 <div class="meta">Brier: lower is better. The pre-move-price and market-price rows are non-trading baseline forecasters.</div>
+
+<h2>Read a market</h2>
+<div class="meta">Paste a Kalshi market URL or ticker, or just ask a question. We fetch the live price and run all three arms.</div>
+<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+  <input id="qinput" placeholder="e.g. Will the U.S. and Iran reach a ceasefire by year end?" style="flex:1;min-width:320px;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:10px;font-family:inherit;font-size:13px;border-radius:3px" onkeydown="if(event.key==='Enter')quickRead()">
+  <button onclick="quickRead()" style="background:#d4a84a;color:#1a1410;border:none;padding:10px 20px;cursor:pointer;font-family:inherit;font-weight:bold;border-radius:3px;letter-spacing:0.05em">READ</button>
+</div>
+<div id="qresult" style="margin-top:16px"></div>
+<details style="margin-top:14px">
+  <summary style="cursor:pointer;font-size:12px;color:rgba(230,215,190,0.5)">Go deeper — enter the details by hand</summary>
+  <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:640px">
+    <input id="a_title" placeholder="Market question / title" style="grid-column:1/3;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <input id="a_price" type="number" placeholder="Current price (¢)" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <input id="a_resdate" type="date" title="Resolution date" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <input id="a_premove" type="number" placeholder="Pre-move price (¢, optional)" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <input id="a_related" type="number" placeholder="Related-market move (pts, optional)" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <textarea id="a_desc" placeholder="Neutral context (optional)" style="grid-column:1/3;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px;min-height:52px"></textarea>
+    <button onclick="evalAdvanced()" style="grid-column:1/3;background:#3a2f1a;color:#d4a84a;border:1px solid rgba(180,150,100,0.4);padding:8px;cursor:pointer;font-family:inherit;border-radius:3px">Evaluate with these details</button>
+  </div>
+  <div class="meta" style="margin-top:6px">Only the question and current price are required. The move fields feed the mechanical rules arm's fade logic; leave them blank and rules stands down while Jev and Claude still answer.</div>
+</details>
 
 <h2>Per-arm results</h2>
 <table>
