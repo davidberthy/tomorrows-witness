@@ -1326,14 +1326,20 @@ app.post('/api/wager/scan', async (req, res) => {
       if (skipCats.includes(e.category)) continue;
       for (const m of (e.markets || [])) {
         if (m.status && m.status !== 'active' && m.status !== 'open') continue;
-        if (m.last_price == null || m.last_price <= 0) continue;
+        // Kalshi migrated its price fields to decimal-dollar `*_dollars` (e.g.
+        // 0.09 = 9¢); the old integer-cent `last_price`/`yes_ask` are gone. Read
+        // the last trade, falling back to the yes-ask when a market hasn't traded,
+        // and convert dollars → integer cents for our accounting.
+        const rawDollars = m.last_price_dollars != null ? m.last_price_dollars : m.yes_ask_dollars;
+        const priceDollars = Number(rawDollars); // Kalshi returns these as strings ("0.0900")
+        if (!Number.isFinite(priceDollars) || priceDollars <= 0) continue;
         const sub = m.yes_sub_title || m.subtitle || '';
         markets.push({
           ticker: m.ticker,
           event_ticker: e.event_ticker || m.event_ticker || e.ticker,
           category: e.category || null,
           title: `${e.title || m.title || ''}${sub ? ' — ' + sub : ''}`.trim(),
-          price: Math.round(m.last_price),
+          price: Math.round(priceDollars * 100),
           close_time: m.close_time || e.close_time || null,
         });
       }
