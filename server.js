@@ -1276,6 +1276,19 @@ app.post('/api/wager/quick', async (req, res) => {
   }
 });
 
+// Resolve-only: same market lookup as /quick, but WITHOUT running the arms or
+// spending anything. Used to auto-populate the manual form's price/date fields.
+app.post('/api/wager/lookup', async (req, res) => {
+  try {
+    const resolved = await resolveKalshiMarket((req.body || {}).input);
+    if (resolved.error) return res.status(404).json({ error: resolved.error, alternatives: resolved.alternatives || [] });
+    res.json({ market: resolved.market, alternatives: resolved.alternatives || [] });
+  } catch (err) {
+    console.error('Wager lookup error:', err);
+    res.status(500).json({ error: 'Lookup failed', detail: String(err.message || err) });
+  }
+});
+
 function median(nums) {
   if (!nums.length) return 0;
   const s = [...nums].sort((a, b) => a - b);
@@ -1851,6 +1864,7 @@ function renderResult(d){
   var box = document.getElementById('qresult');
   if(d.error){ box.innerHTML = '<div style="color:#c46a6a">'+esc(d.error)+'</div>' + altLinks(d.alternatives); return; }
   var m = d.market, f = d.features || {};
+  if(m && m.ticker && m.ticker!=='manual') fillAdvanced(m); // seed "go deeper" with the live market
   var head = '';
   if(m){
     var when = m.resolution_date ? new Date(m.resolution_date).toLocaleDateString() : 'unknown date';
@@ -1895,6 +1909,24 @@ async function quickRead(){
   }catch(e){ document.getElementById('qresult').innerHTML = '<div style="color:#c46a6a">Request failed.</div>'; }
 }
 function quickReadTicker(t){ document.getElementById('qinput').value = t; quickRead(); }
+function fillAdvanced(m){
+  if(!m) return;
+  if(m.title) document.getElementById('a_title').value = m.title;
+  if(m.current_price_cents!=null) document.getElementById('a_price').value = m.current_price_cents;
+  if(m.resolution_date) document.getElementById('a_resdate').value = String(m.resolution_date).slice(0,10);
+}
+async function fetchAdvancedPrice(){
+  var input = document.getElementById('a_title').value.trim();
+  if(!input){ return; }
+  var btn = event && event.target; if(btn){ btn.textContent='Fetching…'; btn.disabled=true; }
+  try{
+    var r = await fetch('/api/wager/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:input})});
+    var d = await r.json();
+    if(d.market){ fillAdvanced(d.market); }
+    else { document.getElementById('qresult').innerHTML = '<div style="color:#c46a6a">'+esc(d.error||'No match')+'</div>'+altLinks(d.alternatives); }
+  }catch(e){ document.getElementById('qresult').innerHTML='<div style="color:#c46a6a">Lookup failed.</div>'; }
+  if(btn){ btn.textContent='Fetch from Kalshi'; btn.disabled=false; }
+}
 async function evalAdvanced(){
   var body = {
     title: document.getElementById('a_title').value.trim(),
@@ -1929,7 +1961,10 @@ async function evalAdvanced(){
 <details style="margin-top:14px">
   <summary style="cursor:pointer;font-size:12px;color:rgba(230,215,190,0.5)">Go deeper — enter the details by hand</summary>
   <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:640px">
-    <input id="a_title" placeholder="Market question / title" style="grid-column:1/3;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+    <div style="grid-column:1/3;display:flex;gap:8px">
+      <input id="a_title" placeholder="Market question, URL, or ticker" style="flex:1;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
+      <button onclick="fetchAdvancedPrice()" title="Look up on Kalshi and fill price + date" style="background:#2a3320;color:#9fc46a;border:1px solid rgba(140,180,100,0.4);padding:8px 12px;cursor:pointer;font-family:inherit;font-size:12px;border-radius:3px;white-space:nowrap">Fetch from Kalshi</button>
+    </div>
     <input id="a_price" type="number" placeholder="Current price (¢)" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
     <input id="a_resdate" type="date" title="Resolution date" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
     <input id="a_premove" type="number" placeholder="Pre-move price (¢, optional)" style="background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:8px;font-family:inherit;font-size:12px;border-radius:3px">
