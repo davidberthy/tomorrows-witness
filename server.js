@@ -1842,6 +1842,11 @@ app.get('/admin/wager', async (req, res) => {
   h1 { font-size:18px; color:#d4a84a; letter-spacing:0.1em; text-transform:uppercase; }
   h2 { font-size:14px; color:#d4a84a; letter-spacing:0.08em; text-transform:uppercase; margin-top:30px; }
   .meta { font-size:12px; color:rgba(230,215,190,0.4); margin-top:8px; }
+  .lead { font-size:14px; line-height:1.55; color:rgba(230,215,190,0.85); margin-top:12px; max-width:760px; }
+  .lead b { color:#d4a84a; font-weight:normal; }
+  .chip { display:inline-block; background:#2a2013; color:#d4a84a; border:1px solid rgba(180,150,100,0.35); border-radius:14px; padding:5px 12px; margin:4px 6px 0 0; font-size:12px; cursor:pointer; }
+  .chip:hover { background:#3a2f1a; }
+  hr { border:none; border-top:1px solid rgba(180,150,100,0.15); margin:34px 0 0; }
   table { border-collapse:collapse; width:100%; margin-top:10px; }
   th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(230,215,190,0.4); padding:8px; border-bottom:1px solid rgba(180,150,100,0.2); }
   td { padding:8px; border-bottom:1px solid rgba(180,150,100,0.08); font-size:13px; }
@@ -1883,6 +1888,9 @@ function renderResult(d){
   } else {
     consensus = '<div style="margin:8px 0;color:rgba(230,215,190,0.5)">No arm sees enough edge to bet.</div>';
   }
+  // Prefer the plain-English trade description; fall back to the terse line.
+  var narr = tradeNarrative(d);
+  if(narr) consensus = narr + '<div class="meta" style="margin:10px 0 2px">How each arm got there</div>';
   var rows = (d.arms||[]).map(function(a){
     var edge = a.edge==null ? '—' : (a.edge>=0?'+':'')+(a.edge*100).toFixed(0)+'%';
     return '<tr><td>'+a.arm+'</td><td>'+pct(a.fair_prob)+'</td><td>'+sideBadge(a.side)+'</td><td>'+edge+'</td>'+
@@ -1909,6 +1917,46 @@ async function quickRead(){
   }catch(e){ document.getElementById('qresult').innerHTML = '<div style="color:#c46a6a">Request failed.</div>'; }
 }
 function quickReadTicker(t){ document.getElementById('qinput').value = t; quickRead(); }
+function runExample(q){ document.getElementById('qinput').value = q; quickRead(); }
+// Plain-English description of the bet the engine would make, framed as the
+// overreaction thesis: price vs. the engine's fair value = the (over)reaction.
+function tradeNarrative(d){
+  var f = d.features || {};
+  var priceC = f.yes_ask_cents;
+  if(priceC==null) return '';
+  var fairs = (d.arms||[]).map(function(a){return a.fair_prob;}).filter(function(x){return x!=null;});
+  if(!fairs.length) return '';
+  var avg = fairs.reduce(function(s,x){return s+x;},0)/fairs.length;
+  var avgC = Math.round(avg*100);
+  var gap = priceC - avgC; // + = price above fair (overreacted up → fade with NO)
+  var sides = (d.arms||[]).filter(function(a){return a.side==='yes'||a.side==='no';});
+  var allNo = sides.length && sides.every(function(a){return a.side==='no';});
+  var allYes = sides.length && sides.every(function(a){return a.side==='yes';});
+  var perArm = (d.arms||[]).filter(function(a){return a.fair_prob!=null;})
+    .map(function(a){return a.arm+' '+Math.round(a.fair_prob*100)+'%';}).join(' · ');
+  var maxStake = Math.max.apply(null,[0].concat((d.arms||[]).map(function(a){return a.stakeCents||0;})));
+  var line1 = 'The market prices this at <b>'+priceC+'¢</b> — an implied '+priceC+'% chance of YES. '+
+    'The engine’s fair-value estimate is about <b>'+avgC+'%</b> ('+perArm+').';
+  var verdict, color;
+  if(Math.abs(gap) < 4){
+    verdict = 'That’s within a few points of the price — <b>no overreaction to fade here</b>. The market looks about right, so the engine mostly stands aside.';
+    color = 'rgba(230,215,190,0.6)';
+  } else if(gap > 0){
+    verdict = 'That’s a <b>'+gap+'-point gap above fair value</b> — the price looks overreacted to the upside. '+
+      'The bet: <b style="color:#c46a6a">NO</b> at '+priceC+'¢. It profits if the price reverts toward '+avgC+'% or the market resolves NO'+
+      (allNo?' (all three arms agree).':'.');
+    color = '#c46a6a';
+  } else {
+    verdict = 'That’s a <b>'+(-gap)+'-point gap below fair value</b> — the price looks too low. '+
+      'The bet: <b style="color:#6fa86f">YES</b> at '+priceC+'¢. It profits if the price rises toward '+avgC+'% or the market resolves YES'+
+      (allYes?' (all three arms agree).':'.');
+    color = '#6fa86f';
+  }
+  var size = maxStake>0 ? ' At quarter-Kelly, the most confident arm would stake about <b>$'+(maxStake/100).toFixed(0)+'</b> of its $'+(d.config&&d.config.bankroll?d.config.bankroll.toLocaleString():'10,000')+' paper bankroll.' : '';
+  return '<div style="margin:10px 0;padding:12px 14px;background:#221a12;border-left:3px solid '+color+';border-radius:3px;line-height:1.55;font-size:13px">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(230,215,190,0.4);margin-bottom:6px">The trade</div>'+
+    line1+' '+verdict+size+'</div>';
+}
 function fillAdvanced(m){
   if(!m) return;
   if(m.title) document.getElementById('a_title').value = m.title;
@@ -1947,16 +1995,21 @@ async function evalAdvanced(){
 }
 </script>
 </head><body>
-<h1>The Wager — Scoreboard</h1>
-<div class="meta">Paper money only · ${WAGER.version} · $${WAGER.bankroll.toLocaleString()} bankroll · quarter-Kelly · thresholds frozen: move≥${WAGER.rules.min_move_points}, ≥${WAGER.rules.min_move_multiple_vs_related}× related, ≥${WAGER.rules.min_days_to_resolution}d, ${WAGER.rules.min_entry_price_cents}–${WAGER.rules.max_entry_price_cents}¢</div>
-<div class="meta">Brier: lower is better. The pre-move-price and market-price rows are non-trading baseline forecasters.</div>
+<h1>The Wager</h1>
+<div class="lead">The thesis: <b>markets overreact to headlines</b>. When news breaks, prediction-market prices lurch further than the facts justify — and drift back. The Wager tests that with <b>paper bets</b>: name a market and its price, and a forecasting engine — a <b>mechanical rule</b>, a trained model (<b>Jev</b>), and <b>Claude</b> — estimates the real odds. Where the price has overshot fair value, that gap is the bet. No real money; we're keeping score to see if the thesis holds.</div>
 
-<h2>Read a market</h2>
-<div class="meta">Paste a Kalshi market URL or ticker, or just ask a question. We fetch the live price and run all three arms.</div>
+<h2>Make a bet</h2>
+<div class="meta">Name a market — a question in plain English, or a Kalshi URL / ticker — and we fetch the live price. The engine estimates fair value and describes the trade: which way it's mispriced, and how a fade would pay off. Try one:</div>
+<div style="margin-top:8px">
+  <span class="chip" onclick="runExample('Will the Treasury purchase Bitcoin?')">Will the Treasury buy Bitcoin?</span>
+  <span class="chip" onclick="runExample('Who will be the next NATO Secretary General?')">Next NATO Secretary General?</span>
+  <span class="chip" onclick="runExample('Will Elon Musk visit Mars in his lifetime?')">Elon to Mars?</span>
+</div>
 <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
   <input id="qinput" placeholder="e.g. Will the U.S. and Iran reach a ceasefire by year end?" style="flex:1;min-width:320px;background:#221a12;color:#e6d7be;border:1px solid rgba(180,150,100,0.3);padding:10px;font-family:inherit;font-size:13px;border-radius:3px" onkeydown="if(event.key==='Enter')quickRead()">
   <button onclick="quickRead()" style="background:#d4a84a;color:#1a1410;border:none;padding:10px 20px;cursor:pointer;font-family:inherit;font-weight:bold;border-radius:3px;letter-spacing:0.05em">READ</button>
 </div>
+<div class="meta" style="margin-top:8px">In each read: <b style="color:rgba(230,215,190,0.7)">Fair P(YES)</b> = the arm's estimate of the true odds · <b style="color:rgba(230,215,190,0.7)">Bet</b> = the side that looks mispriced vs. the market · <b style="color:rgba(230,215,190,0.7)">Edge</b> = how far off the price looks.</div>
 <div id="qresult" style="margin-top:16px"></div>
 <details style="margin-top:14px">
   <summary style="cursor:pointer;font-size:12px;color:rgba(230,215,190,0.5)">Go deeper — enter the details by hand</summary>
@@ -1975,7 +2028,10 @@ async function evalAdvanced(){
   <div class="meta" style="margin-top:6px">Only the question and current price are required. The move fields feed the mechanical rules arm's fade logic; leave them blank and rules stands down while Jev and Claude still answer.</div>
 </details>
 
-<h2>Per-arm results</h2>
+<hr>
+<h2>Results so far</h2>
+<div class="meta">How the arms are doing on the markets the scanner has picked automatically. Paper money only · ${WAGER.version} · $${WAGER.bankroll.toLocaleString()} bankroll per arm · quarter-Kelly sizing · rules-arm thresholds frozen: move≥${WAGER.rules.min_move_points}pts, ≥${WAGER.rules.min_move_multiple_vs_related}× related, ≥${WAGER.rules.min_days_to_resolution}d out, ${WAGER.rules.min_entry_price_cents}–${WAGER.rules.max_entry_price_cents}¢.</div>
+<div class="meta">Brier score: lower is better (0 = perfect). The pre-move-price and market-price rows are non-trading baselines to beat.</div>
 <table>
   <tr><th>Arm</th><th>Paper P&amp;L</th><th>Trades</th><th>Wins</th><th>Brier</th></tr>
   ${scoreRows}
