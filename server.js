@@ -1863,7 +1863,7 @@ function sideBadge(side){
 function altLinks(alts){
   if(!alts || !alts.length) return '';
   return '<div class="meta" style="margin-top:8px">Closest open markets — click to read one:</div><div style="margin-top:4px">'+
-    alts.map(function(c){ return '<a href="#" onclick="quickReadTicker(\''+esc(c.ticker)+'\');return false" style="display:block;color:#d4a84a;padding:2px 0">'+esc((c.title||'').slice(0,64))+(c.current_price_cents!=null?' ('+c.current_price_cents+'¢)':'')+'</a>'; }).join('')+'</div>';
+    alts.map(function(c){ return '<a href="#" onclick="quickReadTicker(\\''+esc(c.ticker)+'\\');return false" style="display:block;color:#d4a84a;padding:2px 0">'+esc((c.title||'').slice(0,64))+(c.current_price_cents!=null?' ('+c.current_price_cents+'¢)':'')+'</a>'; }).join('')+'</div>';
 }
 function renderResult(d){
   var box = document.getElementById('qresult');
@@ -1901,7 +1901,7 @@ function renderResult(d){
   var alts = '';
   if(d.alternatives && d.alternatives.length){
     alts = '<div class="meta" style="margin-top:8px">Not it? '+d.alternatives.map(function(c){
-      return '<a href="#" onclick="quickReadTicker(\''+esc(c.ticker)+'\');return false" style="color:#d4a84a;margin-right:10px">'+esc((c.title||'').slice(0,48))+'</a>';
+      return '<a href="#" onclick="quickReadTicker(\\''+esc(c.ticker)+'\\');return false" style="color:#d4a84a;margin-right:10px">'+esc((c.title||'').slice(0,48))+'</a>';
     }).join('')+'</div>';
   }
   box.innerHTML = head + consensus +
